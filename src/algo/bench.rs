@@ -7,15 +7,18 @@ use algo::txn;
 use std::thread;
 
 pub fn do_bench(conn_str: String) {
-    let pool = mysql::Pool::new(conn_str.clone()).unwrap();
+    let mut conn = mysql::Pool::new(conn_str.clone())
+        .unwrap()
+        .get_conn()
+        .unwrap();
 
     let n_vars = 1000;
 
-    op::create_table(&pool);
-    op::create_vars(n_vars, &pool);
+    op::create_table(&mut conn);
+    op::create_vars(n_vars, &mut conn);
 
-    slowq::turn_on_slow_query(&pool);
-    slowq::clean_slow_query(&pool);
+    slowq::turn_on_slow_query(&mut conn);
+    slowq::clean_slow_query(&mut conn);
 
     let mut threads = vec![];
 
@@ -29,16 +32,16 @@ pub fn do_bench(conn_str: String) {
                     let n_evts = 10;
                     let mut txns = txn::create_txns(n_txns, n_vars, n_evts);
 
-                    let loc_pool = mysql::Pool::new(conn_str_).unwrap();
+                    let mut loc_conn = mysql::Pool::new(conn_str_).unwrap().get_conn().unwrap();
 
                     println!(
                         "thread-{} using connection_id {}",
                         i,
-                        op::get_connection_id(&loc_pool)
+                        op::get_connection_id(&mut loc_conn)
                     );
 
                     for ref mut txn in txns.iter_mut() {
-                        op::do_transaction(txn, &loc_pool);
+                        op::do_transaction(txn, &mut loc_conn);
                     }
                 })
                 .unwrap(),
@@ -49,5 +52,5 @@ pub fn do_bench(conn_str: String) {
         t.join().expect("thread failed");
     }
 
-    op::drop_database(&pool);
+    // op::drop_database(&mut conn);
 }

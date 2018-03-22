@@ -2,8 +2,7 @@ extern crate mysql;
 
 use algo::var::{EventType, Transaction, Variable};
 
-pub fn create_table(pool: &mysql::Pool) {
-    let mut conn = pool.get_conn().unwrap();
+pub fn create_table(conn: &mut mysql::PooledConn) {
     conn.query("CREATE DATABASE IF NOT EXISTS dbcop").unwrap();
     conn.query(
         "CREATE TABLE IF NOT EXISTS dbcop.variables (id BIGINT(64) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, val BIGINT(64) UNSIGNED NOT NULL)",
@@ -12,8 +11,8 @@ pub fn create_table(pool: &mysql::Pool) {
     conn.query("USE dbcop").unwrap();
 }
 
-pub fn create_vars(limit: u64, pool: &mysql::Pool) {
-    for mut stmt in pool.prepare("INSERT INTO dbcop.variables (val) values (?)")
+pub fn create_vars(limit: u64, conn: &mut mysql::PooledConn) {
+    for mut stmt in conn.prepare("INSERT INTO dbcop.variables (val) values (?)")
         .into_iter()
     {
         for _ in 0..limit {
@@ -22,23 +21,22 @@ pub fn create_vars(limit: u64, pool: &mysql::Pool) {
     }
 }
 
-pub fn drop_database(pool: &mysql::Pool) {
-    let mut conn = pool.get_conn().unwrap();
+pub fn drop_database(conn: &mut mysql::PooledConn) {
     conn.query("DROP DATABASE dbcop").unwrap();
 }
 
-pub fn write_var(var: u64, val: u64, pool: &mysql::Pool) {
-    for mut stmt in pool.prepare("UPDATE dbcop.variables SET val=? WHERE id=?")
+pub fn write_var(var: u64, val: u64, conn: &mut mysql::PooledConn) {
+    for mut stmt in conn.prepare("UPDATE dbcop.variables SET val=? WHERE id=?")
         .into_iter()
     {
         stmt.execute((val, var)).unwrap();
     }
 }
 
-pub fn read_var(var: u64, pool: &mysql::Pool) -> Variable {
-    pool.first_exec("SELECT * FROM dbcop.variables WHERE id=?", (var,))
+pub fn read_var(var: u64, conn: &mut mysql::PooledConn) -> Variable {
+    conn.first_exec("SELECT * FROM dbcop.variables WHERE id=?", (var,))
         .map(|result| {
-            let mut row = result.unwrap();
+            let mut row: mysql::Row = result.unwrap();
             Variable {
                 id: row.take("id").unwrap(),
                 val: row.take("val").unwrap(),
@@ -47,17 +45,17 @@ pub fn read_var(var: u64, pool: &mysql::Pool) -> Variable {
         .unwrap()
 }
 
-pub fn get_connection_id(pool: &mysql::Pool) -> u64 {
-    pool.first_exec("SELECT connection_id()", ())
+pub fn get_connection_id(conn: &mut mysql::PooledConn) -> u64 {
+    conn.first_exec("SELECT connection_id()", ())
         .map(|result| {
-            let mut row = result.unwrap();
+            let mut row: mysql::Row = result.unwrap();
             row.take("connection_id()").unwrap()
         })
         .unwrap()
 }
 
-pub fn do_transaction(txn: &mut Transaction, pool: &mysql::Pool) {
-    for mut sqltxn in pool.start_transaction(false, None, None) {
+pub fn do_transaction(txn: &mut Transaction, conn: &mut mysql::PooledConn) {
+    for mut sqltxn in conn.start_transaction(false, None, None) {
         for ref mut e in txn.events.iter_mut() {
             if e.ev_type == EventType::WRITE {
                 sqltxn

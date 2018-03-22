@@ -20,19 +20,17 @@ struct LogRow {
     rows_affected: Option<i64>,
 }
 
-pub fn turn_on_slow_query(pool: &mysql::Pool) {
-    let mut conn = pool.get_conn().unwrap();
+pub fn turn_on_slow_query(conn: &mut mysql::PooledConn) {
     conn.query("SET GLOBAL slow_query_log = 'ON'").unwrap();
     conn.query("SET GLOBAL long_query_time = 0").unwrap();
     conn.query("SET GLOBAL log_output = 'TABLE'").unwrap();
 }
 
-pub fn clean_slow_query(pool: &mysql::Pool) {
-    let mut conn = pool.get_conn().unwrap();
+pub fn clean_slow_query(conn: &mut mysql::PooledConn) {
     conn.query("TRUNCATE TABLE mysql.slow_log").unwrap();
 }
 
-fn get_slow_query(mut conn: mysql::PooledConn) {
+fn get_slow_query(conn: &mut mysql::PooledConn) {
     let slow_log: Vec<_> = conn.prep_exec("SELECT * FROM mysql.slow_log WHERE db=?", ("test",))
         .map(|result| {
             result
