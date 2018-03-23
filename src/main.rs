@@ -46,11 +46,11 @@ fn main() {
     let port = matches.value_of("mysql_port").unwrap_or("3306");
     let user = matches.value_of("mysql_username").unwrap();
     let sec = matches.value_of("mysql_secret").unwrap();
-    println!("{} {} {:?} {:?}", ip, port, user, sec);
+    // println!("{} {} {:?} {:?}", ip, port, user, sec);
 
     let conn_str = format!("mysql://{}:{}@{}:{}", user, sec, ip, port);
 
-    println!("{}", conn_str);
+    // println!("{}", conn_str);
 
     algo::bench::do_bench(conn_str);
 }

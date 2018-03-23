@@ -30,6 +30,11 @@ pub fn clean_slow_query(conn: &mut mysql::PooledConn) {
     conn.query("TRUNCATE TABLE mysql.slow_log").unwrap();
 }
 
+pub fn increase_max_connections(n_conn: u64, conn: &mut mysql::PooledConn) {
+    conn.query(format!("SET GLOBAL max_connections = {}", n_conn))
+        .unwrap();
+}
+
 fn get_slow_query(conn: &mut mysql::PooledConn) {
     let slow_log: Vec<_> = conn.prep_exec("SELECT * FROM mysql.slow_log WHERE db=?", ("test",))
         .map(|result| {
