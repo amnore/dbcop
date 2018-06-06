@@ -1,201 +1,315 @@
-extern crate pbr;
+// use self::pbr::ProgressBar;
 
-use self::pbr::ProgressBar;
-
-use algo::txn;
+// use algo::txn;
 use db::op;
-use db::slowq;
+// use db::slowq;
 use mysql;
+use rand;
+
+use rand::Rng;
 
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use std::collections::{HashMap, HashSet};
-use std::iter::FromIterator;
-
 use std::net::Ipv4Addr;
 
-fn reachable(root: u64, read_map: &HashMap<u64, HashMap<usize, u64>>) -> HashSet<u64> {
-    let mut stack = Vec::new();
-    let mut seen = HashSet::new();
+use consistency::ser::Chains;
 
-    stack.push(root);
-    // seen.insert(root);
+use std::collections::{HashMap, HashSet};
 
-    while let Some(u) = stack.pop() {
-        if let Some(vs) = read_map.get(&u) {
-            for &v in vs.values() {
-                if seen.insert(v) {
-                    stack.push(v);
+#[derive(Debug, PartialEq)]
+pub enum Event {
+    READ,
+    WRITE,
+}
+
+#[derive(Debug)]
+pub struct Action {
+    ev: Event,
+    var: usize,
+    wr_node: usize,
+    wr_txn: usize,
+    wr_pos: usize,
+}
+
+pub fn do_single_node(node: DBNode, vars: &Vec<usize>, history: &mut Vec<Vec<Action>>) {
+    // println!("doing for {:?} with {:?}", node, vars);
+    let n_txn = 5;
+    let n_evts_per_txn = 3;
+    // let n_iter = 100;
+
+    match mysql::Pool::new(node.addr) {
+        Ok(conn) => {
+            let mut rng = rand::thread_rng();
+
+            for wr_txn in 0..n_txn {
+                let mut curr_txn = Vec::new();
+                for mut sqltxn in conn.start_transaction(
+                    false,
+                    Some(mysql::IsolationLevel::Serializable),
+                    Some(false),
+                ) {
+                    for wr_pos in 0..n_evts_per_txn {
+                        let curr_var = *rng.choose(&vars).unwrap();
+                        if rng.gen() {
+                            match sqltxn.prep_exec(
+                            "UPDATE dbcop.variables SET wr_node=?, wr_txn=?, wr_pos=? WHERE id=?",
+                            (node.id, history.len(), curr_txn.len(), curr_var),
+                        ) {
+                            Err(_e) => {
+                                println!("WRITE ERR {} {} {} {}-- {:?}", curr_var, node.id, wr_txn, wr_pos, _e);
+                            }
+                            _ => {
+                                let act = Action {
+                                    ev: Event::WRITE,
+                                    var: curr_var,
+                                    wr_node: node.id,
+                                    wr_txn: history.len(),
+                                    wr_pos: curr_txn.len(),
+                                };
+                                curr_txn.push(act);
+                            }
+                        }
+                        } else {
+                            match sqltxn
+                                .prep_exec("SELECT * FROM dbcop.variables WHERE id=?", (curr_var,))
+                                .and_then(|mut rows| {
+                                    let mut row = rows.next().unwrap().unwrap();
+                                    // assert_eq!(e.var.id, row.take::<u64, &str>("id").unwrap());
+                                    let _id = row.take("id").unwrap();
+                                    let _wr_node = row.take("wr_node").unwrap();
+                                    let _wr_txn = row.take("wr_txn").unwrap();
+                                    let _wr_pos = row.take("wr_pos").unwrap();
+
+                                    let act = Action {
+                                        ev: Event::READ,
+                                        var: _id,
+                                        wr_node: _wr_node,
+                                        wr_txn: _wr_txn,
+                                        wr_pos: _wr_pos,
+                                    };
+                                    curr_txn.push(act);
+                                    Ok(())
+                                }) {
+                                Err(_e) => {
+                                    // println!("READ ERR -- {:?}", _e);
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    match sqltxn.commit() {
+                        Err(_e) => {
+                            // println!("COMMIT ERROR {}", _e);
+                        }
+                        _ => {}
+                    }
+                    // sqltxn.rollback().unwrap();
                 }
+                history.push(curr_txn);
+            }
+        }
+        Err(e) => {
+            println!("{}", e);
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DBNode {
+    addr: String,
+    id: usize,
+}
+
+pub fn single_bench(nodes: &Vec<DBNode>, vars: &Vec<usize>) {
+    loop {
+        match mysql::Pool::new(nodes[0].addr.clone()) {
+            Ok(_conn) => match _conn.get_conn() {
+                Ok(mut conn) => {
+                    op::create_vars(vars, &mut conn);
+                    break;
+                }
+                Err(e) => {
+                    println!("{}", e);
+                }
+            },
+            Err(e) => {
+                println!("{}", e);
             }
         }
     }
 
-    seen
-}
+    let mut threads = Vec::with_capacity(nodes.len());
 
-fn is_irreflexive(read_map: &HashMap<u64, HashMap<usize, u64>>) -> bool {
-    for &e in read_map.keys() {
-        let r = reachable(e, &read_map);
-        if r.contains(&e) {
-            println!("found {} {:?}", e, r);
-            return false;
-        }
+    let mut session_histories = Vec::with_capacity(nodes.len());
+
+    for i in 0..nodes.len() {
+        session_histories.push(Arc::new(Mutex::new(Vec::new())));
+        let history = session_histories[i].clone();
+        let node_addr = nodes[i].clone();
+        let vars = vars.clone();
+
+        threads.push(thread::spawn(move || {
+            let mut history = history.lock().unwrap();
+            do_single_node(node_addr, &vars, &mut (*history));
+        }));
     }
-    return true;
-}
 
-fn get_wr_map(execution: &Vec<txn::Transaction>) -> HashMap<usize, HashMap<usize, Vec<usize>>> {
-    let mut write_val = HashMap::new();
-    execution.iter().enumerate().for_each(|(txn_id, txn)| {
-        if txn.commit {
-            txn.events.iter().for_each(|ev| {
-                if ev.is_write() {
-                    write_val.insert(ev.var.clone(), txn_id + 1);
-                }
-            });
+    for t in threads {
+        t.join()
+            .expect("thread failed to doing bench at a single node");
+    }
+
+    let mut histories = Vec::with_capacity(nodes.len());
+
+    for hist in session_histories {
+        histories.push(Arc::try_unwrap(hist).unwrap().into_inner().unwrap());
+    }
+
+    for (node_id, sess) in histories.iter().enumerate() {
+        println!("node {}", node_id + 1);
+        for txn in sess.iter() {
+            println!("{:?}", txn)
         }
-    });
-    let mut write_read_x_vec = HashMap::new();
-    execution.iter().enumerate().for_each(|(txn_id, txn)| {
-        if txn.commit {
-            txn.events.iter().for_each(|ev| {
-                if ev.is_read() {
-                    let write_txn = if ev.var.val == 0 {
-                        0
+        println!("");
+    }
+
+    for sess in histories.iter() {
+        for txn in sess.iter() {
+            for act in txn.iter() {
+                if act.ev == Event::READ {
+                    if act.wr_node == 0 {
+                        assert_eq!(act.wr_txn, 0);
+                        assert_eq!(act.wr_pos, 0);
                     } else {
-                        write_val[&ev.var]
-                    };
-                    let var_entry = write_read_x_vec.entry(ev.var.id).or_insert(HashMap::new());
-                    let write_entry = var_entry.entry(write_txn).or_insert(Vec::new());
-                    write_entry.push(txn_id);
+                        // println!("{:?}", act);
+                        let w_act = &histories[act.wr_node - 1][act.wr_txn][act.wr_pos];
+                        assert_eq!(act.var, w_act.var);
+                        assert_eq!(w_act.ev, Event::WRITE);
+                    }
                 }
-            });
-        }
-    });
-    write_read_x_vec
-}
-
-fn get_ww_order(execution: &Vec<txn::Transaction>) -> HashMap<usize, Vec<usize>> {
-    let mut write_x_map: HashMap<usize, HashSet<usize>> = HashMap::new();
-    execution.iter().enumerate().for_each(|(txn_id, txn)| {
-        if txn.commit {
-            txn.events.iter().for_each(|ev| {
-                if ev.is_write() {
-                    let var_id = ev.var.id;
-                    let entry = write_x_map.entry(var_id).or_insert(HashSet::new());
-                    entry.insert(txn_id + 1);
-                }
-            });
-        }
-    });
-    HashMap::from_iter(write_x_map.into_iter().map(|(var, txn_ids)| {
-        let mut vec = Vec::from_iter(txn_ids.into_iter());
-        vec.sort_by(|&a, &b| {
-            execution[a - 1]
-                .end
-                .query_time
-                .cmp(&execution[b - 1].end.query_time)
-        });
-        (var, vec)
-    }))
-}
-
-pub fn do_single_node(node: usize, vars: &Vec<usize>) {
-    let mysql_addr = format!(
-        "mysql://{}@{}",
-        "root",
-        Ipv4Addr::new(172, 18, 0, 11 + node)
-    );
-
-    let mut conn = mysql::Pool::new(mysql_addr).unwrap().get_conn().unwrap();
-
-    let mut rng = rand::thread_rng();
-
-    let mut v = Vec::new();
-
-    for wr_txn in 0..n_txn {
-        for wr_pos in 0..n_evts_per_txn {
-            if rng.gen() {
-                // do read
-                v.push(Event::read(Variable::new(id, 0)));
-            } else {
-                // do write
-                counters[id] += 1;
-                v.push(Event::write(Variable::new(id, counters[id])));
             }
         }
     }
-}
 
-pub fn single_bench(nodes: &Vec<String>, vars: &Vec<usize>) {
-    let n_vars = 5;
-    let n_txn = 6;
-    let n_evts_per_txn = 4;
-    let n_iter = 100;
+    // add code for serialization check
 
-    {
-        let mut conn = mysql::Pool::new(nodes[0].clone())
-            .unwrap()
-            .get_conn()
-            .unwrap();
+    let mut txn_last_writes = HashMap::new();
 
-        op::create_vars(vars, &mut conn);
+    for (node_id, sess) in histories.iter().enumerate() {
+        for (txn_id, txn) in sess.iter().enumerate() {
+            let mut last_writes = HashMap::new();
+            for act in txn.iter() {
+                if act.ev == Event::WRITE {
+                    last_writes.insert(act.var, act.wr_pos);
+                }
+            }
+            txn_last_writes.insert((node_id + 1, txn_id), last_writes);
+        }
     }
 
-    for nodes in 0..6 {
-        do_single_node()
+    // checking for non-committed read, non-repeatable read
+    for (node_id, sess) in histories.iter().enumerate() {
+        for (txn_id, txn) in sess.iter().enumerate() {
+            let mut writes = HashMap::new();
+            let mut reads: HashMap<usize, (usize, usize, usize)> = HashMap::new();
+            for (act_id, act) in txn.iter().enumerate() {
+                match act.ev {
+                    Event::WRITE => {
+                        writes.insert(act.var, act.wr_pos);
+                        reads.remove(&act.var);
+                    }
+                    Event::READ => {
+                        if let Some(pos) = writes.get(&act.var) {
+                            assert_eq!(txn_id, act.wr_txn, "update-lost!! action-{} of txn({},{}) read value from ({},{},{}) instead from the txn.", act_id, node_id + 1, txn_id, act.wr_node, act.wr_txn, act.wr_pos);
+                            assert_eq!(node_id + 1, act.wr_node, "update-lost!! action-{} of txn({},{}) read value from ({},{},{}) instead from the txn.", act_id, node_id + 1, txn_id, act.wr_node, act.wr_txn, act.wr_pos);
+                            assert_eq!(*pos, act.wr_pos, "update-lost!! action-{} of txn({},{}) read value from ({},{},{}) instead from the txn.", act_id, node_id + 1, txn_id, act.wr_node, act.wr_txn, act.wr_pos);
+                        } else {
+                            if act.wr_node != 0 {
+                                assert_eq!(
+                                    *txn_last_writes
+                                        .get(&(act.wr_node, act.wr_txn))
+                                        .unwrap()
+                                        .get(&act.var)
+                                        .unwrap(),
+                                    act.wr_pos,
+                                    "non-committed read!! action-{} of txn({},{}) read value from ({},{},{}) instead from the txn.", act_id, node_id + 1, txn_id, act.wr_node, act.wr_txn, act.wr_pos
+                                );
+                            }
+
+                            if let Some((wr_node, wr_txn, wr_pos)) = reads.get(&act.var) {
+                                assert_eq!(*wr_node, act.wr_node, "non-repeatable read!! action-{} of txn({},{}) read value from ({},{},{}) instead as the last read.", act_id, node_id + 1, txn_id, act.wr_node, act.wr_txn, act.wr_pos);
+                                assert_eq!(*wr_txn, act.wr_txn, "non-repeatable read!! action-{} of txn({},{}) read value from ({},{},{}) instead as the last read.", act_id, node_id + 1, txn_id, act.wr_node, act.wr_txn, act.wr_pos);
+                                assert_eq!(*wr_pos, act.wr_pos, "non-repeatable read!! action-{} of txn({},{}) read value from ({},{},{}) instead as the last read.", act_id, node_id + 1, txn_id, act.wr_node, act.wr_txn, act.wr_pos);
+                            }
+                        }
+                        reads.insert(act.var, (act.wr_node, act.wr_txn, act.wr_pos));
+                    }
+                }
+            }
+        }
     }
+
+    let n_sizes = histories.iter().map(|ref v| v.len()).collect();
+    let mut txn_infos = HashMap::new();
+
+    for (node_id, sess) in histories.iter().enumerate() {
+        for (txn_id, txn) in sess.iter().enumerate() {
+            let mut rd_info = HashMap::new();
+            let mut wr_info = HashSet::new();
+            for act in txn.iter() {
+                match act.ev {
+                    Event::READ => {
+                        if act.wr_node != node_id + 1 || act.wr_txn != txn_id {
+                            if let Some((old_node, old_txn)) =
+                                rd_info.insert(act.var, (act.wr_node, act.wr_txn))
+                            {
+                                assert_eq!(old_node, act.wr_node);
+                                assert_eq!(old_txn, act.wr_txn);
+                            }
+                        }
+                    }
+                    Event::WRITE => {
+                        wr_info.insert(act.var);
+                    }
+                }
+            }
+            txn_infos.insert((node_id + 1, txn_id), (rd_info, wr_info));
+        }
+    }
+
+    let mut chains = Chains::new(&n_sizes, &txn_infos);
+    if !chains.preprocess() {
+        println!("found cycle while processing wr and po order");
+    }
+    println!("{:?}", chains);
+    println!("{:?}", chains.serializable_order_dfs());
 }
 
 pub fn do_bench() {
     let n_vars = 5;
-    let n_txn = 6;
-    let n_evts_per_txn = 4;
-    let n_iter = 100;
+    let n_nodes = 6;
+    // let n_txn = 6;
+    // let n_evts_per_txn = 4;
+    // let n_iter = 100;
+
+    let nodes = {
+        let mut nodes = Vec::with_capacity(n_nodes);
+        for i in 1usize..(n_nodes + 1) {
+            nodes.push(DBNode {
+                addr: format!(
+                    "mysql://{}@{}",
+                    "root",
+                    Ipv4Addr::new(172, 18, 0, 10 + (i as u8))
+                ),
+                id: i,
+            });
+        }
+        nodes
+    };
 
     {
-        // let mut tc = mysql::Pool::new(conn_str.clone())
-        //     .unwrap()
-        //     .get_conn()
-        //     .unwrap();
-        // slowq::increase_max_connections(1000000, &mut tc);
-        // slowq::turn_on_slow_query(&mut tc);
-    }
-
-    let mut nodes = Vec::with_capacity(6);
-    for i in 0..6 {
-        nodes.push(format!(
-            "mysql://{}@{}",
-            "root",
-            Ipv4Addr::new(172, 18, 0, 11 + i)
-        ));
-    }
-
-    let threads = Vec::new();
-
-    let session_histories = Vec::with_capacity(6);
-
-    for i in 0..6 {
-        session_histories.push(Arc::new(Mutex::new(Vec::new())));
-    }
-
-    for i in 0..6 {
-        println!("{}", n);
-
-        let history = session_histories[i].clone();
-        let node_addr = nodes[i].clone();
-
-        threads.push(thread::spawn(move || {
-            let mut loc_conn = curr_conn.lock().unwrap();
-            let mut loc_txn = curr_txn.lock().unwrap();
-            op::do_transaction(&mut loc_txn, &mut loc_conn);
-        }));
-    }
-
-    {
-        let mut conn = mysql::Pool::new(nodes[0].clone())
+        let mut conn = mysql::Pool::new(nodes[0].addr.clone())
             .unwrap()
             .get_conn()
             .unwrap();
@@ -203,83 +317,27 @@ pub fn do_bench() {
         op::create_table(&mut conn);
     }
 
-    //
-    // let mut conns = vec![];
-    // let mut conn_ids = vec![];
-    // let mut executed_txns = vec![];
-    //
-    // let txns = {
-    //     let mut txns_ = vec![];
-    //     let mut counters = vec![0; n_vars + 1];
-    //
-    //     for _ in 0..n_txn {
-    //         txns_.push(Arc::new(Mutex::new(txn::create_txn(
-    //             n_vars,
-    //             n_evts_per_txn,
-    //             &mut counters,
-    //         ))));
-    //     }
-    //
-    //     txns_
-    // };
-    //
-    // for _ in 0..n_txn {
-    //     let mut txn_conn = mysql::Pool::new(&conn_str).unwrap().get_conn().unwrap();
-    //     conn_ids.push(op::get_connection_id(&mut txn_conn));
-    //     conns.push(Arc::new(Mutex::new(txn_conn)));
+    // for node in nodes.iter() {
+    //     let mut conn = mysql::Pool::new(node.addr.clone())
+    //         .unwrap()
+    //         .get_conn()
+    //         .unwrap();
+    //     conn.query(format!("SET GLOBAL max_connections = 100000000"))
+    //         .unwrap();
     // }
-    //
-    // let mut pb = ProgressBar::new(n_iter);
-    // pb.format("╢▌▌░╟");
-    //
-    // for _ in 0..n_iter {
-    //     op::clean_table(&mut conn);
-    //     slowq::clean_slow_query(&mut conn);
-    //     let mut threads = vec![];
-    //     for i in 0..n_txn {
-    //         let curr_txn = txns[i].clone();
-    //         let curr_conn = conns[i].clone();
-    //         threads.push(thread::spawn(move || {
-    //             let mut loc_conn = curr_conn.lock().unwrap();
-    //             let mut loc_txn = curr_txn.lock().unwrap();
-    //
-    //             op::do_transaction(&mut loc_txn, &mut loc_conn);
-    //         }));
-    //     }
-    //
-    //     for t in threads {
-    //         t.join().expect("thread failed");
-    //     }
-    //
-    //     pb.inc();
-    //
-    //     let mut curr_txns = txns.iter()
-    //         .map(|x| x.lock().unwrap().clone())
-    //         .collect::<Vec<_>>();
-    //
-    //     for i in 0..n_txn {
-    //         let conn_id = conn_ids[i];
-    //         curr_txns[i].start = slowq::get_start_txn_durations(conn_id, &mut conn);
-    //         curr_txns[i].end = slowq::get_end_txn_durations(conn_id, &mut conn);
-    //         let mut access_durs = slowq::get_access_durations(conn_id, &mut conn);
-    //         for j in 0..curr_txns[i].events.len() {
-    //             curr_txns[i].events[j].dur = access_durs[j].clone();
-    //         }
-    //     }
-    //     executed_txns.push(curr_txns);
-    // }
-    //
-    // println!("\n\n");
-    //
-    // // TODO: use cpupool
-    // executed_txns.iter().for_each(|each_execution| {
-    //     let wr_map = get_wr_map(&each_execution);
-    //     let ww_order = get_ww_order(&each_execution);
-    //     println!("{:?} ||||| {:?}", wr_map, ww_order);
-    // });
 
-    // println!("{:?}", conn_ids);
-    // println!("{:#?}", executed_txns.first().unwrap());
+    // return;
 
-    // op::drop_database(&mut conn);
+    let mut threads = Vec::new();
+
+    for i in 0..1 {
+        let nodes = nodes.clone();
+        threads.push(thread::spawn(move || {
+            single_bench(&nodes, &((i * n_vars)..((i + 1) * n_vars)).collect());
+        }));
+    }
+
+    for t in threads {
+        t.join().expect("failed to single bench");
+    }
 }
