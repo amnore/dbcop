@@ -7,3 +7,8 @@ authors = ["Ranadeep Biswas <ranadip.bswas@gmail.com>"]
 mysql = "12.3.1"
 clap = "2.31.2"
 rand = "0.4"
+pbr = "1.0.0"
+time = "0.1"
+
+[profile.release]
+opt-level = 3

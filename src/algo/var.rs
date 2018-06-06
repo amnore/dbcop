@@ -1,25 +1,56 @@
-#[derive(Debug, PartialEq, Eq)]
+use std::fmt;
+use mysql::time::Timespec;
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum EventType {
     WRITE,
     READ,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Variable {
-    pub id: u64,
-    pub val: u64,
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct MySQLDur {
+    pub start_time: Timespec,
+    pub lock_time: Timespec,
+    pub query_time: Timespec,
 }
 
-impl Variable {
-    pub fn new(id: u64, val: u64) -> Self {
-        Variable { id: id, val: val }
+impl MySQLDur {
+    pub fn new() -> Self {
+        MySQLDur {
+            start_time: Timespec::new(0, 0),
+            lock_time: Timespec::new(0, 0),
+            query_time: Timespec::new(0, 0),
+        }
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq, Hash, Clone)]
+pub struct Variable {
+    pub id: usize,
+    pub val: (usize, usize, usize, usize)
+}
+
+impl Variable {
+    pub fn new(id: usize, val: (usize, usize, usize, usize)) -> Self {
+        Variable { id: id, val: val }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.val.0 == 0
+    }
+}
+
+impl fmt::Debug for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{:?}", self.id, self.val)
+    }
+}
+
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub struct Event {
     pub ev_type: EventType,
     pub var: Variable,
+    pub dur: MySQLDur,
 }
 
 impl Event {
@@ -27,32 +58,31 @@ impl Event {
         Event {
             ev_type: EventType::READ,
             var: var,
+            dur: MySQLDur::new(),
         }
     }
     pub fn write(var: Variable) -> Self {
         Event {
             ev_type: EventType::WRITE,
             var: var,
+            dur: MySQLDur::new(),
         }
     }
-}
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Transaction {
-    pub commit: bool,
-    pub events: Vec<Event>,
-}
-
-pub fn create_txn() -> Transaction {
-    let mut v = vec![];
-    for i in 1..6 {
-        v.push(Event {
-            ev_type: EventType::READ,
-            var: Variable { id: i, val: 10 },
-        })
+    pub fn is_write(&self) -> bool {
+        self.ev_type == EventType::WRITE
     }
-    Transaction {
-        commit: true,
-        events: v,
+
+    pub fn is_read(&self) -> bool {
+        self.ev_type == EventType::READ
+    }
+}
+
+impl fmt::Debug for Event {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.ev_type {
+            EventType::READ => write!(f, "{}({:?})", 'R', self.var),
+            EventType::WRITE => write!(f, "{}({:?})", 'W', self.var),
+        }
     }
 }

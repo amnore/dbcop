@@ -1,35 +1,45 @@
-extern crate mysql;
-
-use algo::var::{EventType, Transaction, Variable};
+use algo::txn::Transaction;
+use algo::var::{EventType, Variable};
+use mysql;
 
 pub fn create_table(conn: &mut mysql::PooledConn) {
+    // drop_database(conn);
     conn.query("CREATE DATABASE IF NOT EXISTS dbcop").unwrap();
+    conn.query("DROP TABLE dbcop.variables").unwrap();
     conn.query(
-        "CREATE TABLE IF NOT EXISTS dbcop.variables (id BIGINT(64) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, val BIGINT(64) UNSIGNED NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS dbcop.variables (id BIGINT(64) UNSIGNED NOT NULL PRIMARY KEY, val BIGINT(64) UNSIGNED NOT NULL, wr_node BIGINT(64) UNSIGNED NOT NULL, wr_txn BIGINT(64) UNSIGNED NOT NULL, wr_pos BIGINT(64) UNSIGNED NOT NULL)",
     ).unwrap();
-    conn.query("TRUNCATE TABLE dbcop.variables").unwrap();
+    // conn.query("TRUNCATE TABLE dbcop.variables").unwrap();
     conn.query("USE dbcop").unwrap();
 }
 
-pub fn create_vars(limit: u64, conn: &mut mysql::PooledConn) {
-    for mut stmt in conn.prepare("INSERT INTO dbcop.variables (val) values (?)")
-        .into_iter()
+pub fn create_vars(offset: usize, n_var: usize, conn: &mut mysql::PooledConn) {
+    for mut stmt in conn.prepare(
+        "INSERT INTO dbcop.variables (id, val, wr_node, wr_txn, wr_pos) values (?, ?, 0, 0, 0)",
+    ).into_iter()
     {
-        for _ in 0..limit {
-            stmt.execute((0,)).unwrap();
+        for v in offset..(offset + n_var) {
+            stmt.execute((v, 0)).unwrap();
         }
     }
+}
+
+pub fn clean_table(conn: &mut mysql::PooledConn) {
+    conn.query("UPDATE dbcop.variables SET val=0, wr_node=0, wr_txn=0, wr_pos=0")
+        .unwrap();
 }
 
 pub fn drop_database(conn: &mut mysql::PooledConn) {
     conn.query("DROP DATABASE dbcop").unwrap();
 }
 
-pub fn write_var(var: u64, val: u64, conn: &mut mysql::PooledConn) {
-    for mut stmt in conn.prepare("UPDATE dbcop.variables SET val=? WHERE id=?")
-        .into_iter()
+pub fn write_var(var: u64, val: u64, action_id: (u64, u64, u64), conn: &mut mysql::PooledConn) {
+    for mut stmt in conn.prepare(
+        "UPDATE dbcop.variables SET val=?, wr_node=?, wr_txn=?, wr_pos=? WHERE id=?",
+    ).into_iter()
     {
-        stmt.execute((val, var)).unwrap();
+        stmt.execute((val, action_id.0, action_id.1, action_id.2, var))
+            .unwrap();
     }
 }
 
@@ -55,25 +65,42 @@ pub fn get_connection_id(conn: &mut mysql::PooledConn) -> u64 {
 }
 
 pub fn do_transaction(txn: &mut Transaction, conn: &mut mysql::PooledConn) {
-    for mut sqltxn in conn.start_transaction(false, None, None) {
+    /*
+    ReadUncommitted,
+    ReadCommitted,
+    RepeatableRead,
+    Serializable,
+    */
+    for mut sqltxn in conn.start_transaction(
+        false,
+        Some(mysql::IsolationLevel::Serializable),
+        Some(false),
+    ) {
         for ref mut e in txn.events.iter_mut() {
             if e.ev_type == EventType::WRITE {
-                sqltxn
-                    .prep_exec(
-                        "UPDATE dbcop.variables SET val=? WHERE id=?",
-                        (e.var.val, e.var.id),
-                    )
-                    .unwrap();
+                match sqltxn.prep_exec(
+                    "UPDATE dbcop.variables SET val=? WHERE id=?",
+                    (e.var.val, e.var.id),
+                ) {
+                    Err(e) => {
+                        println!("WRITE ERR -- {:?}", e);
+                    }
+                    _ => {}
+                }
             } else if e.ev_type == EventType::READ {
-                sqltxn
+                match sqltxn
                     .prep_exec("SELECT * FROM dbcop.variables WHERE id=?", (e.var.id,))
                     .and_then(|mut rows| {
                         let mut row = rows.next().unwrap().unwrap();
                         // assert_eq!(e.var.id, row.take::<u64, &str>("id").unwrap());
                         e.var.val = row.take("val").unwrap();
                         Ok(())
-                    })
-                    .unwrap();
+                    }) {
+                    Err(e) => {
+                        println!("READ ERR -- {:?}", e);
+                    }
+                    _ => {}
+                }
             }
         }
         if txn.commit {

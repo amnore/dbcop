@@ -1,7 +1,6 @@
-extern crate mysql;
-
-use mysql::time::Timespec;
-use mysql::time::Duration;
+use mysql;
+use mysql::time::{Duration, Timespec};
+use algo::var::MySQLDur;
 
 #[derive(Debug, PartialEq, Eq)]
 struct LogRow {
@@ -69,4 +68,116 @@ fn get_slow_query(conn: &mut mysql::PooledConn) {
             e.sql_text
         );
     }
+}
+
+pub fn get_start_txn_durations(conn_id: u64, conn: &mut mysql::PooledConn) -> MySQLDur {
+    let slow_log = conn.prep_exec(
+        "SELECT * FROM mysql.slow_log WHERE thread_id=? AND sql_text LIKE 'START TRANSACTION'",
+        (conn_id,),
+    ).map(|result| {
+            result
+                .map(|x| x.unwrap())
+                .map(|mut row| LogRow {
+                    start_time: row.take("start_time"),
+                    user_host: row.take("user_host"),
+                    query_time: row.take("query_time"),
+                    lock_time: row.take("lock_time"),
+                    rows_sent: row.take("rows_sent"),
+                    rows_examined: row.take("rows_examined"),
+                    db: row.take("db"),
+                    last_insert_id: row.take("last_insert_id"),
+                    insert_id: row.take("insert_id"),
+                    server_id: row.take("server_id"),
+                    sql_text: row.take("sql_text"),
+                    thread_id: row.take("thread_id"),
+                    rows_affected: row.take("rows_affected"),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap();
+
+    let start_time = slow_log[0].start_time.unwrap();
+    let lock_time = slow_log[0].lock_time.unwrap();
+    let query_time = slow_log[0].query_time.unwrap();
+    MySQLDur {
+        start_time: start_time,
+        lock_time: start_time + lock_time,
+        query_time: start_time + lock_time + query_time,
+    }
+}
+
+pub fn get_end_txn_durations(conn_id: u64, conn: &mut mysql::PooledConn) -> MySQLDur {
+    let slow_log = conn.prep_exec(
+        "SELECT * FROM mysql.slow_log WHERE thread_id=? AND (sql_text LIKE 'COMMIT' OR sql_text LIKE 'ROLLBACK')",
+        (conn_id,),
+    ).map(|result| {
+            result
+                .map(|x| x.unwrap())
+                .map(|mut row| LogRow {
+                    start_time: row.take("start_time"),
+                    user_host: row.take("user_host"),
+                    query_time: row.take("query_time"),
+                    lock_time: row.take("lock_time"),
+                    rows_sent: row.take("rows_sent"),
+                    rows_examined: row.take("rows_examined"),
+                    db: row.take("db"),
+                    last_insert_id: row.take("last_insert_id"),
+                    insert_id: row.take("insert_id"),
+                    server_id: row.take("server_id"),
+                    sql_text: row.take("sql_text"),
+                    thread_id: row.take("thread_id"),
+                    rows_affected: row.take("rows_affected"),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap();
+
+    let start_time = slow_log[0].start_time.unwrap();
+    let lock_time = slow_log[0].lock_time.unwrap();
+    let query_time = slow_log[0].query_time.unwrap();
+    MySQLDur {
+        start_time: start_time,
+        lock_time: start_time + lock_time,
+        query_time: start_time + lock_time + query_time,
+    }
+}
+
+pub fn get_access_durations(conn_id: u64, conn: &mut mysql::PooledConn) -> Vec<MySQLDur> {
+    let slow_log = conn.prep_exec(
+        "SELECT * FROM mysql.slow_log WHERE thread_id=? AND (sql_text LIKE 'SELECT%' OR sql_text LIKE 'UPDATE%')",
+        (conn_id,),
+    ).map(|result| {
+            result
+                .map(|x| x.unwrap())
+                .map(|mut row| LogRow {
+                    start_time: row.take("start_time"),
+                    user_host: row.take("user_host"),
+                    query_time: row.take("query_time"),
+                    lock_time: row.take("lock_time"),
+                    rows_sent: row.take("rows_sent"),
+                    rows_examined: row.take("rows_examined"),
+                    db: row.take("db"),
+                    last_insert_id: row.take("last_insert_id"),
+                    insert_id: row.take("insert_id"),
+                    server_id: row.take("server_id"),
+                    sql_text: row.take("sql_text"),
+                    thread_id: row.take("thread_id"),
+                    rows_affected: row.take("rows_affected"),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap();
+    slow_log
+        .iter()
+        .map(|x| {
+            let start_time = x.start_time.unwrap();
+            let lock_time = x.lock_time.unwrap();
+            let query_time = x.query_time.unwrap();
+            MySQLDur {
+                start_time: start_time,
+                lock_time: start_time + lock_time,
+                query_time: start_time + lock_time + query_time,
+            }
+        })
+        .collect()
 }
