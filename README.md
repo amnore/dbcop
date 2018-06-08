@@ -4,7 +4,7 @@
 
 1.  Clone it.
 ```
-    git clone git@gitlab.math.univ-paris-diderot.fr:ranadeep/dbcop.git
+    git clone -b wip git@gitlab.math.univ-paris-diderot.fr:ranadeep/dbcop.git
 ```
 
 2. Fire up Galera cluster using  `docker-compose`.
