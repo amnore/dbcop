@@ -337,9 +337,9 @@ impl Chains {
                                 last_wr.remove(x);
                             }
                             for (&x, &rf_txn) in rd_info.iter() {
-                                let mut s = HashSet::new();
-                                s.insert(cand);
-                                last_wr.insert(x, (rf_txn, s));
+                                let ent = last_wr.entry(x).or_insert_with(|| (rf_txn, HashSet::new()));
+                                assert_eq!(ent.0, rf_txn);
+                                ent.1.insert(cand);
                             }
 
                             if let Some(it) = self.vis_closure.forward_edge.get(&cand) {
