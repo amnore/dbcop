@@ -101,6 +101,8 @@ pub fn do_single_node(node: DBNode, vars: &Vec<usize>, history: &mut Vec<Vec<Act
                     match sqltxn.commit() {
                         Err(_e) => {
                             // println!("COMMIT ERROR {}", _e);
+                            // println!("{:?}", curr_txn);
+                            curr_txn.clear();
                         }
                         _ => {}
                     }
