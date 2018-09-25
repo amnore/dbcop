@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct EdgeClosure {
     forward_edge: HashMap<usize, HashSet<usize>>,
     backward_edge: HashMap<usize, HashSet<usize>>,
@@ -17,10 +17,12 @@ impl EdgeClosure {
     pub fn contains(&self, u: usize, v: usize) -> bool {
         self.forward_edge
             .get(&u)
-            .and_then(|vs| Some(vs.contains(&v))) == Some(true)
+            .and_then(|vs| Some(vs.contains(&v)))
+            == Some(true)
     }
 
     pub fn add_edge(&mut self, u: usize, v: usize) -> bool {
+        // returns true if new edge added
         if !self.contains(u, v) {
             let mut new_edge = Vec::new();
             {
@@ -70,7 +72,7 @@ impl EdgeClosure {
 pub struct Chains {
     n_sizes: Vec<usize>,
     root_txn_id: usize,
-    txns: Vec<Option<(HashMap<usize, usize>, HashSet<usize>)>>,
+    txns: Vec<(HashMap<usize, usize>, HashSet<usize>)>,
 
     tuple_to_id: Vec<Vec<usize>>,
     id_to_tuple: Vec<(usize, usize)>,
@@ -98,26 +100,32 @@ impl Chains {
                 id_to_tuple.push((node_id + 1, node_ix));
             }
         }
-        let mut txns = vec![None; n_sizes.iter().sum::<usize>() + 1];
-        let mut root_writes = HashSet::new();
+        let mut txns = vec![(HashMap::new(), HashSet::new()); n_sizes.iter().sum::<usize>() + 1];
 
         for (&(node_id1, txn_id1), (_rd_info, _wr_info)) in txns_info.iter() {
-            let mut rd_info = HashMap::new();
-            let mut wr_info = HashSet::new();
-            for (&x, (node_id2, txn_id2)) in _rd_info.iter() {
-                rd_info.insert(x, tuple_to_id[*node_id2][*txn_id2]);
-                if tuple_to_id[*node_id2][*txn_id2] == root_txn_id {
-                    root_writes.insert(x);
+            {
+                let mut curr_info = &mut txns[tuple_to_id[node_id1][txn_id1]];
+                let mut rd_info = &mut curr_info.0;
+                for (&x, (node_id2, txn_id2)) in _rd_info.iter() {
+                    rd_info.insert(x, tuple_to_id[*node_id2][*txn_id2]);
+                }
+                let mut wr_info = &mut curr_info.1;
+                for &x in _wr_info.iter() {
+                    wr_info.insert(x);
                 }
             }
-            for &x in _wr_info.iter() {
-                wr_info.insert(x);
+
+            {
+                let mut root_wr = &mut txns[root_txn_id].1;
+                for (&x, (node_id2, txn_id2)) in _rd_info.iter() {
+                    if tuple_to_id[*node_id2][*txn_id2] == root_txn_id {
+                        root_wr.insert(x);
+                    }
+                }
             }
 
-            txns[tuple_to_id[node_id1][txn_id1]] = Some((rd_info, wr_info));
+            // txns[tuple_to_id[node_id1][txn_id1]] = Some((rd_info, wr_info));
         }
-
-        txns[root_txn_id] = Some((HashMap::new(), root_writes));
 
         Chains {
             n_sizes: n_sizes.clone(),
@@ -132,32 +140,31 @@ impl Chains {
     }
 
     pub fn preprocess_wr(&mut self) {
-        for (txn, s) in self.txns.iter().enumerate() {
-            if let Some((rd_info, wr_info)) = s {
-                for (&x, &wr_txn) in rd_info {
-                    {
-                        let var_ent = self.wr_order.entry(x).or_insert_with(HashMap::new);
-                        let txn_ent = var_ent.entry(wr_txn).or_insert_with(HashSet::new);
-                        txn_ent.insert(txn);
-                    }
-                    {
-                        let txn_ent = self.wr_order_by_txn
-                            .entry(wr_txn)
-                            .or_insert_with(HashMap::new);
-                        let var_ent = txn_ent.entry(x).or_insert_with(HashSet::new);
-                        var_ent.insert(txn);
-                    }
+        for (txn, (rd_info, wr_info)) in self.txns.iter().enumerate() {
+            for (&x, &wr_txn) in rd_info {
+                {
+                    let var_ent = self.wr_order.entry(x).or_insert_with(HashMap::new);
+                    let txn_ent = var_ent.entry(wr_txn).or_insert_with(HashSet::new);
+                    txn_ent.insert(txn);
                 }
+                {
+                    let txn_ent = self
+                        .wr_order_by_txn
+                        .entry(wr_txn)
+                        .or_insert_with(HashMap::new);
+                    let var_ent = txn_ent.entry(x).or_insert_with(HashSet::new);
+                    var_ent.insert(txn);
+                }
+            }
 
-                for &x in wr_info.iter() {
-                    {
-                        let var_ent = self.wr_order.entry(x).or_insert_with(HashMap::new);
-                        var_ent.entry(txn).or_insert_with(HashSet::new);
-                    }
-                    {
-                        let txn_ent = self.wr_order_by_txn.entry(txn).or_insert_with(HashMap::new);
-                        txn_ent.entry(x).or_insert_with(HashSet::new);
-                    }
+            for &x in wr_info.iter() {
+                {
+                    let var_ent = self.wr_order.entry(x).or_insert_with(HashMap::new);
+                    var_ent.entry(txn).or_insert_with(HashSet::new);
+                }
+                {
+                    let txn_ent = self.wr_order_by_txn.entry(txn).or_insert_with(HashMap::new);
+                    txn_ent.entry(x).or_insert_with(HashSet::new);
                 }
             }
         }
@@ -210,20 +217,30 @@ impl Chains {
                             if u != u_ && v != u_ {
                                 if self.vis_closure.contains(u, u_) {
                                     println!(
-                                        "adding RW ({1}, {2}), WR_{3}({0}, {1}), wr({2}) |- {0}, VIS({0}, {2})",
+                                        "adding RW ({1}, {2}), WR_{3}({0}, {1}), {3} in W({2}), VIS({0}, {2})",
                                         u, v, u_, _x
                                     );
                                     if self.vis_closure.contains(u_, v) {
+                                        // println!("cycle: {0} -> {1} -> {0}", v, u_);
+                                        println!(
+                                            "cycle: {0:?} -> {1:?} -> {0:?}",
+                                            self.id_to_tuple[v], self.id_to_tuple[u_]
+                                        );
                                         return false;
                                     }
                                     new_edge.push((v, u_));
                                 }
                                 if self.vis_closure.contains(u_, v) {
                                     println!(
-                                        "adding WW ({2}, {0}), WR_{3}({0}, {1}), wr({2}) |- {0}, VIS({2}, {1})",
+                                        "adding WW ({2}, {0}), WR_{3}({0}, {1}), {3} in W({2}), VIS({2}, {1})",
                                         u, v, u_, _x
                                     );
                                     if self.vis_closure.contains(u, u_) {
+                                        // println!("cycle: {0} -> {1} -> {0}", u_, u);
+                                        println!(
+                                            "cycle: {0:?} -> {1:?} -> {0:?}",
+                                            self.id_to_tuple[u_], self.id_to_tuple[u]
+                                        );
                                         return false;
                                     }
                                     new_edge.push((u_, u));
@@ -238,6 +255,11 @@ impl Chains {
 
             for (u, v) in new_edge {
                 if self.vis_closure.contains(v, u) {
+                    // println!("cycle: {0} -> {1} -> {0}", u, v);
+                    println!(
+                        "cycle: {0:?} -> {1:?} -> {0:?}",
+                        self.id_to_tuple[u], self.id_to_tuple[v]
+                    );
                     return false;
                 }
                 is_converged &= !self.vis_closure.add_edge(u, v);
@@ -264,11 +286,11 @@ impl Chains {
         prev_order: &mut Vec<usize>,
         seen: &mut HashSet<Vec<usize>>,
     ) -> bool {
-        if cut[0] == 1
-            && cut.iter()
-                .skip(1)
-                .zip(self.n_sizes.iter())
-                .all(|(&l1, &l2)| l1 == l2)
+        if cut[0] == 1 && cut
+            .iter()
+            .skip(1)
+            .zip(self.n_sizes.iter())
+            .all(|(&l1, &l2)| l1 == l2)
         {
             return true;
         }
@@ -281,15 +303,14 @@ impl Chains {
                     //     print!(" ");
                     // }
                     // println!("{:?}", cut);
-                    if let Some((ref rd_info, ref wr_info)) = self.txns[cand] {
+                    {
+                        let (ref rd_info, ref wr_info) = self.txns[cand];
                         if wr_info.iter().all(|&x| match last_wr.get(&x) {
                             Some((_, rd_txns)) => rd_txns.iter().all(|&rd_txn| rd_txn == cand),
                             None => true,
-                        }) && rd_info.iter().all(|(&x, rf_txn)| {
-                            match last_wr.get(&x) {
-                                Some((wr_txn, _)) => rf_txn == wr_txn,
-                                None => false,
-                            }
+                        }) && rd_info.iter().all(|(&x, rf_txn)| match last_wr.get(&x) {
+                            Some((wr_txn, _)) => rf_txn == wr_txn,
+                            None => false,
                         }) {
                             {
                                 let mut to_remove = Vec::new();
@@ -337,7 +358,8 @@ impl Chains {
                                 last_wr.remove(x);
                             }
                             for (&x, &rf_txn) in rd_info.iter() {
-                                let ent = last_wr.entry(x).or_insert_with(|| (rf_txn, HashSet::new()));
+                                let ent =
+                                    last_wr.entry(x).or_insert_with(|| (rf_txn, HashSet::new()));
                                 assert_eq!(ent.0, rf_txn);
                                 ent.1.insert(cand);
                             }
@@ -353,33 +375,34 @@ impl Chains {
                             // mark cut as seen
                             seen.insert(cut.clone());
                         }
-                    } else {
-                        prev_order.push(cand);
-                        if let Some(it) = self.vis_closure.forward_edge.get(&cand) {
-                            for &v in it.iter() {
-                                if let Some(s) = active_prev.get_mut(&v) {
-                                    s.remove(&cand);
-                                } else {
-                                    panic!("this should not raise");
-                                }
-                            }
-                        }
-                        active_prev.retain(|_, v| !v.is_empty());
-                        if self._serializable_order_dfs(cut, active_prev, last_wr, prev_order, seen)
-                        {
-                            return true;
-                        }
-                        if let Some(it) = self.vis_closure.forward_edge.get(&cand) {
-                            for &v in it.iter() {
-                                let ent = active_prev.entry(v).or_insert_with(HashSet::new);
-                                ent.insert(cand);
-                            }
-                        }
-                        // revert prev order
-                        prev_order.pop();
-                        // mark cut as seen
-                        seen.insert(cut.clone());
                     }
+                    //  else {
+                    //     prev_order.push(cand);
+                    //     if let Some(it) = self.vis_closure.forward_edge.get(&cand) {
+                    //         for &v in it.iter() {
+                    //             if let Some(s) = active_prev.get_mut(&v) {
+                    //                 s.remove(&cand);
+                    //             } else {
+                    //                 panic!("this should not raise");
+                    //             }
+                    //         }
+                    //     }
+                    //     active_prev.retain(|_, v| !v.is_empty());
+                    //     if self._serializable_order_dfs(cut, active_prev, last_wr, prev_order, seen)
+                    //     {
+                    //         return true;
+                    //     }
+                    //     if let Some(it) = self.vis_closure.forward_edge.get(&cand) {
+                    //         for &v in it.iter() {
+                    //             let ent = active_prev.entry(v).or_insert_with(HashSet::new);
+                    //             ent.insert(cand);
+                    //         }
+                    //     }
+                    //     // revert prev order
+                    //     prev_order.pop();
+                    //     // mark cut as seen
+                    //     seen.insert(cut.clone());
+                    // }
                 }
             }
             cut[i] -= 1;
@@ -402,6 +425,19 @@ impl Chains {
             &mut prev_order,
             &mut seen,
         ) {
+            {
+                // println!("checking if found order is actually serializable.");
+                let mut test_closure = self.vis_closure.clone();
+                for sl in prev_order.windows(2) {
+                    // println!("{:?}", sl);
+                    let (u, v) = (sl[0], sl[1]);
+                    if test_closure.contains(v, u) {
+                        println!("this order is not correct!!");
+                        break;
+                    }
+                    test_closure.add_edge(u, v);
+                }
+            }
             Some(
                 prev_order
                     .iter()
@@ -413,4 +449,35 @@ impl Chains {
             None
         }
     }
+
+    // pub fn serialization_order_SAT(&self) -> Option<Vec<usize>> {
+    //     let mut edge_var_to_edge = Vec::new();
+    //     let mut edge_to_edge_var = Vec::new();
+    //
+    //     let n_txn = self.id_to_tuple.len();
+    //
+    //     for u in 0..n_txn {
+    //         let temp = Vec::new();
+    //         for v in (u + 1)..self.id_to_tuple.len() {
+    //             temp.push(edge_var_to_edge.len());
+    //             edge_to_edge_var.push((u, v));
+    //         }
+    //         edge_to_edge_var.push(temp);
+    //     }
+    //
+    //     let mut clauses = Vec::new();
+    //     for u in 0..n_txn {
+    //         for v in (u + 1)..n_txn {
+    //             for t in (v + 1)..n_txn {
+    //                 add_clauses(u, v, t);
+    //                 add_clauses(v, u, t);
+    //                 add_clauses(v, t, u);
+    //                 add_clauses(t, v, u);
+    //                 add_clauses(t, u, v);
+    //                 add_clauses(u, t, v);
+    //             }
+    //         }
+    //     }
+    //     None
+    // }
 }

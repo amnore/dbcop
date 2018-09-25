@@ -4,8 +4,10 @@ version = "0.1.0"
 authors = ["Ranadeep Biswas <ranadip.bswas@gmail.com>"]
 
 [dependencies]
-mysql = "12.3.1"
-rand = "0.5"
+mysql = "*"
+rand = "*"
+clap = "*"
+ansi_term = "*"
 
 [profile.release]
 opt-level = 3
