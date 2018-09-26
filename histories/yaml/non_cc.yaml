@@ -1,0 +1,31 @@
+- - events:
+    - id:       1
+      write:    true
+      variable: 0
+      value:    1
+      success:  true
+    success:    true
+- - events:
+    - id:       2
+      write:    false
+      variable: 0
+      value:    1
+      success:  true
+    - id:       3
+      write:    true
+      variable: 1
+      value:    3
+      success:  true
+    success:    true
+- - events:
+    - id:       4
+      write:    false
+      variable: 0
+      value:    0
+      success:  true
+    - id:       5
+      write:    false
+      variable: 1
+      value:    3
+      success:  true
+    success:    true

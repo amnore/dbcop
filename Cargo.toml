@@ -8,6 +8,10 @@ mysql = "*"
 rand = "*"
 clap = "*"
 ansi_term = "*"
+serde = "*"
+serde_derive = "*"
+serde_json = "*"
+serde_yaml = "*"
 
 [profile.release]
 opt-level = 3
