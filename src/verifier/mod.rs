@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use consistency::causal::Causal;
 use consistency::ser::Chains;
 use consistency::si::SIChains;
 use db::history::Transaction;
@@ -23,7 +24,7 @@ pub fn transactional_history_verify(
                             let event2 = &transaction2.events[i_event];
                             // println!("{:?}\n{:?}", event, event2);
                             if !transaction2.success {
-                                println!("UNCOMMITTED READ");
+                                println!("DIRTY READ");
                                 return;
                             }
                             if !event2.write {
@@ -189,54 +190,67 @@ pub fn transactional_history_verify(
     }
 
     {
-        println!("Doing serializable consistency check");
-        let mut chains = Chains::new(&n_sizes, &transaction_infos);
-        println!("{:?}", chains);
-        if !chains.preprocess() {
-            println!("found cycle while processing wr and po order");
-        }
-        // println!("{:?}", chains);
-        // println!("{:?}", chains.serializable_order_dfs());
-        match chains.serializable_order_dfs() {
-            Some(order) => {
-                println!("Serializable progress of transactions");
-                for node_id in order {
-                    print!("{} ", node_id);
+        {
+            println!("Doing causal consistency check");
+            let mut causal = Causal::new(&n_sizes, &transaction_infos);
+            if causal.preprocess_vis() && causal.preprocess_co() {
+                println!("History is causal consistent!");
+                println!();
+                println!("Doing serializable consistency check");
+                let mut chains = Chains::new(&n_sizes, &transaction_infos);
+                println!("{:?}", chains);
+                if !chains.preprocess() {
+                    println!("found cycle while processing wr and po order");
                 }
-                println!();
-                println!("SER")
-            }
-            None => {
-                println!("No valid SER history");
-                println!();
-                {
-                    println!("Doing snapshot isolation check");
-                    let mut chains = SIChains::new(&n_sizes, &transaction_infos);
-                    println!("{:?}", chains);
-                    if !chains.preprocess() {
-                        println!("found cycle while processing wr and po order");
-                    }
-                    // println!("{:?}", chains);
-                    match chains.serializable_order_dfs() {
-                        Some(order) => {
-                            let mut rw_map = HashMap::new();
-                            println!("SI progress of transactions (broken in read and write)");
-                            for node_id in order {
-                                let ent = rw_map.entry(node_id).or_insert(true);
-                                if *ent {
-                                    print!("{}R ", node_id);
-                                    *ent = false;
-                                } else {
-                                    print!("{}W ", node_id);
-                                    *ent = true;
-                                }
-                            }
-                            println!();
-                            println!("SI")
+                // println!("{:?}", chains);
+                // println!("{:?}", chains.serializable_order_dfs());
+                match chains.serializable_order_dfs() {
+                    Some(order) => {
+                        println!("Serializable progress of transactions");
+                        for node_id in order {
+                            print!("{} ", node_id);
                         }
-                        None => println!("No valid SI history\nNON-SI"),
+                        println!();
+                        println!("SER")
+                    }
+                    None => {
+                        println!("No valid SER history");
+                        println!();
+                        {
+                            println!("Doing snapshot isolation check");
+                            let mut chains = SIChains::new(&n_sizes, &transaction_infos);
+                            println!("{:?}", chains);
+                            if !chains.preprocess() {
+                                println!("found cycle while processing wr and po order");
+                            }
+                            // println!("{:?}", chains);
+                            match chains.serializable_order_dfs() {
+                                Some(order) => {
+                                    let mut rw_map = HashMap::new();
+                                    println!(
+                                        "SI progress of transactions (broken in read and write)"
+                                    );
+                                    for node_id in order {
+                                        let ent = rw_map.entry(node_id).or_insert(true);
+                                        if *ent {
+                                            print!("{}R ", node_id);
+                                            *ent = false;
+                                        } else {
+                                            print!("{}W ", node_id);
+                                            *ent = true;
+                                        }
+                                    }
+                                    println!();
+                                    println!("SI")
+                                }
+                                None => println!("No valid SI history\nNON-SI"),
+                            }
+                        }
                     }
                 }
+            } else {
+                println!("no valid causal consistent history");
+                println!("NON-CC");
             }
         }
     }

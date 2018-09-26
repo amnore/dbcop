@@ -1,11 +1,18 @@
 use ansi_term::Style;
 use std::fmt;
 
+#[derive(Serialize, Deserialize, Eq, PartialEq)]
 pub struct Event {
     pub id: usize,
     pub write: bool,
     pub variable: usize,
     pub value: usize,
+    pub success: bool,
+}
+
+#[derive(Serialize, Deserialize, Eq, PartialEq)]
+pub struct Transaction {
+    pub events: Vec<Event>,
     pub success: bool,
 }
 
@@ -53,11 +60,6 @@ impl Event {
             success: false,
         }
     }
-}
-
-pub struct Transaction {
-    pub events: Vec<Event>,
-    pub success: bool,
 }
 
 impl fmt::Debug for Transaction {

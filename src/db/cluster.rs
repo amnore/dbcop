@@ -10,6 +10,8 @@ use std::thread;
 
 use std::convert::From;
 
+use serde_yaml;
+
 #[derive(Debug, Clone)]
 pub struct Node {
     pub ip: IpAddr,
@@ -87,6 +89,11 @@ where
             }
             println!();
         }
+
+        println!("# yaml");
+        println!("{}", serde_yaml::to_string(&hist).unwrap());
+        println!();
+
         transactional_history_verify(&hist, &id_vec);
         self.cleanup();
         None

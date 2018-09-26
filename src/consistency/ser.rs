@@ -1,84 +1,18 @@
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, Clone)]
-struct EdgeClosure {
-    forward_edge: HashMap<usize, HashSet<usize>>,
-    backward_edge: HashMap<usize, HashSet<usize>>,
-}
-
-impl EdgeClosure {
-    pub fn new() -> Self {
-        EdgeClosure {
-            forward_edge: HashMap::new(),
-            backward_edge: HashMap::new(),
-        }
-    }
-
-    pub fn contains(&self, u: usize, v: usize) -> bool {
-        self.forward_edge
-            .get(&u)
-            .and_then(|vs| Some(vs.contains(&v)))
-            == Some(true)
-    }
-
-    pub fn add_edge(&mut self, u: usize, v: usize) -> bool {
-        // returns true if new edge added
-        if !self.contains(u, v) {
-            let mut new_edge = Vec::new();
-            {
-                let opt_prevs_u = self.backward_edge.get(&u);
-                let opt_nexts_v = self.forward_edge.get(&v);
-                if let Some(prevs_u) = opt_prevs_u {
-                    if let Some(nexts_v) = opt_nexts_v {
-                        for &prev_u in prevs_u.iter() {
-                            for &next_v in nexts_v.iter() {
-                                if !self.contains(prev_u, next_v) {
-                                    new_edge.push((prev_u, next_v));
-                                }
-                            }
-                        }
-                    }
-                }
-                if let Some(prevs_u) = opt_prevs_u {
-                    for &prev_u in prevs_u.iter() {
-                        if !self.contains(prev_u, v) {
-                            new_edge.push((prev_u, v));
-                        }
-                    }
-                }
-                if let Some(nexts_v) = opt_nexts_v {
-                    for &next_v in nexts_v.iter() {
-                        if !self.contains(u, next_v) {
-                            new_edge.push((u, next_v));
-                        }
-                    }
-                }
-                new_edge.push((u, v));
-            }
-            for (u_, v_) in new_edge {
-                let ent_u = self.forward_edge.entry(u_).or_insert_with(HashSet::new);
-                ent_u.insert(v_);
-                let ent_v = self.backward_edge.entry(v_).or_insert_with(HashSet::new);
-                ent_v.insert(u_);
-            }
-            true
-        } else {
-            false
-        }
-    }
-}
+use consistency::util::EdgeClosure;
 
 #[derive(Debug)]
 pub struct Chains {
-    n_sizes: Vec<usize>,
-    root_txn_id: usize,
-    txns: Vec<(HashMap<usize, usize>, HashSet<usize>)>,
+    pub n_sizes: Vec<usize>,
+    pub root_txn_id: usize,
+    pub txns: Vec<(HashMap<usize, usize>, HashSet<usize>)>,
 
-    tuple_to_id: Vec<Vec<usize>>,
-    id_to_tuple: Vec<(usize, usize)>,
-    wr_order: HashMap<usize, HashMap<usize, HashSet<usize>>>,
-    wr_order_by_txn: HashMap<usize, HashMap<usize, HashSet<usize>>>,
-    vis_closure: EdgeClosure,
+    pub tuple_to_id: Vec<Vec<usize>>,
+    pub id_to_tuple: Vec<(usize, usize)>,
+    pub wr_order: HashMap<usize, HashMap<usize, HashSet<usize>>>,
+    pub wr_order_by_txn: HashMap<usize, HashMap<usize, HashSet<usize>>>,
+    pub vis_closure: EdgeClosure,
 }
 
 impl Chains {
@@ -185,14 +119,22 @@ impl Chains {
         // }
     }
 
-    pub fn preprocess_vis(&mut self) {
+    pub fn preprocess_vis(&mut self) -> bool {
         for po in self.tuple_to_id.iter().skip(1) {
             for (j, &id) in po.iter().enumerate() {
                 if j < po.len() - 1 {
+                    if self.vis_closure.contains(id + 1, id) {
+                        println!("found cycles in VIS");
+                        return false;
+                    }
                     self.vis_closure.add_edge(id, id + 1);
                 }
             }
             if let Some(&u) = po.first() {
+                if self.vis_closure.contains(u, self.root_txn_id) {
+                    println!("found cycles in VIS");
+                    return false;
+                }
                 self.vis_closure.add_edge(self.root_txn_id, u);
             }
         }
@@ -200,10 +142,15 @@ impl Chains {
         for (_, info) in self.wr_order.iter() {
             for (&u, vs) in info {
                 for &v in vs.iter() {
+                    if self.vis_closure.contains(v, u) {
+                        println!("found cycles in VIS");
+                        return false;
+                    }
                     self.vis_closure.add_edge(u, v);
                 }
             }
         }
+        return true;
     }
 
     pub fn preprocess_ww_rw(&mut self) -> bool {
@@ -274,8 +221,7 @@ impl Chains {
 
     pub fn preprocess(&mut self) -> bool {
         self.preprocess_wr();
-        self.preprocess_vis();
-        self.preprocess_ww_rw()
+        self.preprocess_vis() && self.preprocess_ww_rw()
     }
 
     pub fn _serializable_order_dfs(
