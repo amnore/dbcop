@@ -5,6 +5,7 @@ authors = ["Ranadeep Biswas <ranadip.bswas@gmail.com>"]
 
 [dependencies]
 mysql = "*"
+postgres = "*"
 rand = "*"
 clap = "*"
 ansi_term = "*"
@@ -12,6 +13,9 @@ serde = "*"
 serde_derive = "*"
 serde_json = "*"
 serde_yaml = "*"
+byteorder = "*"
+petgraph = "*"
+antidotedb = { path = "../antidotedb" }
 
 [profile.release]
 opt-level = 3
