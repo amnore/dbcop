@@ -1,0 +1,23 @@
+version:            "3.7"
+services:
+  antidote1:
+    image:          antidotedb/antidote
+    container_name: antidote1
+    hostname:       antidote1
+    environment:
+      SHORT_NAME:   "true"
+      NODE_NAME:    antidote@antidote1
+  antidote2:
+    image:          antidotedb/antidote
+    container_name: antidote2
+    hostname:       antidote2
+    environment:
+      SHORT_NAME:   "true"
+      NODE_NAME:    antidote@antidote2
+  antidote3:
+    image:          antidotedb/antidote
+    container_name: antidote3
+    hostname:       antidote3
+    environment:
+      SHORT_NAME:   "true"
+      NODE_NAME:    antidote@antidote3

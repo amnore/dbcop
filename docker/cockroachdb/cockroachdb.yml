@@ -1,0 +1,25 @@
+version:            "3.7"
+services:
+  antidote1:
+    image:          cockroachdb/cockroach:v2.1.0
+    container_name: roach1
+    hostname:       roach1
+    command:
+      - start
+      - --insecure
+  antidote2:
+    image:          cockroachdb/cockroach:v2.1.0
+    container_name: roach2
+    hostname:       roach2
+    command:
+      - start
+      - --insecure
+      - --join=roach1
+  antidote3:
+    image:          cockroachdb/cockroach:v2.1.0
+    container_name: roach3
+    hostname:       roach3
+    command:
+      - start
+      - --insecure
+      - --join=roach1

@@ -3,7 +3,6 @@ use std::fmt;
 
 #[derive(Serialize, Deserialize, Eq, PartialEq)]
 pub struct Event {
-    pub id: usize,
     pub write: bool,
     pub variable: usize,
     pub value: usize,
@@ -19,8 +18,7 @@ pub struct Transaction {
 impl fmt::Debug for Event {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let repr = format!(
-            "[{}|{}({}):{}]",
-            self.id,
+            "<{}({}):{:2}>",
             if self.write { 'W' } else { 'R' },
             self.variable,
             self.value
@@ -42,18 +40,16 @@ impl fmt::Debug for Event {
 }
 
 impl Event {
-    pub fn read(id: usize, var: usize) -> Self {
+    pub fn read(var: usize) -> Self {
         Event {
-            id: id,
             write: false,
             variable: var,
             value: 0,
             success: false,
         }
     }
-    pub fn write(id: usize, var: usize, val: usize) -> Self {
+    pub fn write(var: usize, val: usize) -> Self {
         Event {
-            id: id,
             write: true,
             variable: var,
             value: val,

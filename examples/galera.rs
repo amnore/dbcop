@@ -27,7 +27,7 @@ impl ClusterNode for GaleraNode {
         match mysql::Pool::new(self.addr.clone()) {
             Ok(conn) => hist.iter_mut().for_each(|transaction| {
                 for mut sqltxn in conn.start_transaction(
-                    false,
+                    true,
                     Some(mysql::IsolationLevel::Serializable),
                     Some(false),
                 ) {
@@ -73,7 +73,7 @@ impl ClusterNode for GaleraNode {
                         }
                         Err(_e) => {
                             assert_eq!(transaction.success, false);
-                            // println!("COMMIT ERROR {}", _e);
+                            println!("{:?} -- COMMIT ERROR {}", transaction, _e);
                         }
                     }
                 }

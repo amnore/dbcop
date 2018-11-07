@@ -1,44 +1,67 @@
 use std::collections::{HashMap, HashSet};
 
 use consistency::causal::Causal;
+use consistency::sat::Sat;
 use consistency::ser::Chains;
 use consistency::si::SIChains;
 use db::history::Transaction;
 
-pub fn transactional_history_verify(
+pub fn gen_write_map(
     histories: &Vec<Vec<Transaction>>,
-    id_vec: &Vec<(usize, usize, usize)>,
-) {
-    for session in histories.iter() {
-        for transaction in session.iter() {
+) -> HashMap<(usize, usize), (usize, usize, usize)> {
+    let mut write_map = HashMap::new();
+
+    for (i_node, session) in histories.iter().enumerate() {
+        for (i_transaction, transaction) in session.iter().enumerate() {
+            for (i_event, event) in transaction.events.iter().enumerate() {
+                if event.write {
+                    if let Some(_) = write_map.insert(
+                        (event.variable, event.value),
+                        (i_node + 1, i_transaction, i_event),
+                    ) {
+                        unreachable!();
+                    }
+                }
+                write_map.entry((event.variable, 0)).or_insert((0, 0, 0));
+            }
+        }
+    }
+
+    write_map
+}
+
+pub fn transactional_history_verify(histories: &Vec<Vec<Transaction>>) {
+    let write_map = gen_write_map(histories);
+
+    for (i_node_r, session) in histories.iter().enumerate() {
+        for (i_transaction_r, transaction) in session.iter().enumerate() {
             if transaction.success {
-                for event in transaction.events.iter() {
+                for (i_event_r, event) in transaction.events.iter().enumerate() {
                     if !event.write && event.success {
-                        let (i_node, i_transaction, i_event) = id_vec[event.value];
-                        if event.value == 0 {
-                            assert_eq!(i_node, 0);
-                            assert_eq!(i_transaction, 0);
-                            assert_eq!(i_event, 0);
+                        if let Some(&(i_node, i_transaction, i_event)) =
+                            write_map.get(&(event.variable, event.value))
+                        {
+                            if event.value == 0 {
+                                assert_eq!(i_node, 0);
+                                assert_eq!(i_transaction, 0);
+                                assert_eq!(i_event, 0);
+                            } else {
+                                let transaction2 = &histories[i_node - 1][i_transaction];
+                                let event2 = &transaction2.events[i_event];
+                                // println!("{:?}\n{:?}", event, event2);
+                                if !transaction2.success {
+                                    println!(
+                                        "{:?} read from {:?}",
+                                        (i_node_r + 1, i_transaction_r, i_event_r),
+                                        (i_node, i_transaction, i_event),
+                                    );
+                                    println!("DIRTY READ");
+                                    return;
+                                }
+                            }
                         } else {
-                            let transaction2 = &histories[i_node - 1][i_transaction];
-                            let event2 = &transaction2.events[i_event];
-                            // println!("{:?}\n{:?}", event, event2);
-                            if !transaction2.success {
-                                println!("DIRTY READ");
-                                return;
-                            }
-                            if !event2.write {
-                                println!("READ FROM NON-WRITE");
-                                return;
-                            }
-                            if event.variable != event2.variable {
-                                println!("READ DIFFERENT VARIABLE");
-                                return;
-                            }
-                            if event.value != event2.value {
-                                println!("READ DIFFERENT VALUE");
-                                return;
-                            }
+                            println!("NO WRITE WITH SAME (VARIABLE, VALUE)");
+                            return;
                         }
                     }
                 }
@@ -77,13 +100,19 @@ pub fn transactional_history_verify(
                             writes.insert(event.variable, i_event);
                             reads.remove(&event.variable);
                         } else {
-                            let (wr_i_node, wr_i_transaction, wr_i_event) = id_vec[event.value];
+                            let &(wr_i_node, wr_i_transaction, wr_i_event) =
+                                write_map.get(&(event.variable, event.value)).unwrap();
                             if let Some(pos) = writes.get(&event.variable) {
                                 // checking if read the last write in same transaction
                                 if !((i_node + 1 == wr_i_node)
                                     && (i_transaction == wr_i_transaction)
                                     && (*pos == wr_i_event))
                                 {
+                                    println!(
+                                        "wr:{:?}, rd:{:?}",
+                                        (wr_i_node, wr_i_transaction, wr_i_event),
+                                        (i_node + 1, i_transaction, i_event)
+                                    );
                                     println!("LOST UPDATE");
                                     return;
                                 }
@@ -171,7 +200,8 @@ pub fn transactional_history_verify(
                         if event.write {
                             write_info.insert(event.variable);
                         } else {
-                            let (wr_i_node, wr_i_transaction, wr_i_event) = id_vec[event.value];
+                            let &(wr_i_node, wr_i_transaction, wr_i_event) =
+                                write_map.get(&(event.variable, event.value)).unwrap();
                             if wr_i_node != i_node + 1 || wr_i_transaction != i_transaction {
                                 if let Some((old_i_node, old_i_transaction)) =
                                     read_info.insert(event.variable, (wr_i_node, wr_i_transaction))
@@ -189,61 +219,103 @@ pub fn transactional_history_verify(
         }
     }
 
+    if false {
+        let mut sat_solver = Sat::new(&n_sizes, &transaction_infos);
+
+        sat_solver.pre_vis_co();
+        sat_solver.session();
+        sat_solver.wr_ww_rw();
+        sat_solver.vis_transitive();
+
+        println!("SAT DECISION START");
+
+        // CC
+        sat_solver.causal();
+        if sat_solver.solve() {
+            // prefix
+            sat_solver.prefix();
+            if sat_solver.solve() {
+                // SI
+                sat_solver.conflict();
+                if sat_solver.solve() {
+                    // SER
+                    sat_solver.ser();
+                    if sat_solver.solve() {
+                        println!("SER")
+                    } else {
+                        println!("SI, NON SER");
+                    }
+                } else {
+                    println!("PRE, but NON-SI");
+                }
+            } else {
+                println!("CC, but NON-PRE");
+            }
+        } else {
+            println!("NON-CC")
+        }
+
+        println!("SAT DECISION END");
+    }
+
     {
         {
             println!("Doing causal consistency check");
             let mut causal = Causal::new(&n_sizes, &transaction_infos);
             if causal.preprocess_vis() && causal.preprocess_co() {
                 println!("History is causal consistent!");
-                println!();
-                println!("Doing serializable consistency check");
-                let mut chains = Chains::new(&n_sizes, &transaction_infos);
-                println!("{:?}", chains);
-                if !chains.preprocess() {
-                    println!("found cycle while processing wr and po order");
-                }
-                // println!("{:?}", chains);
-                // println!("{:?}", chains.serializable_order_dfs());
-                match chains.serializable_order_dfs() {
-                    Some(order) => {
-                        println!("Serializable progress of transactions");
-                        for node_id in order {
-                            print!("{} ", node_id);
-                        }
-                        println!();
-                        println!("SER")
+                println!("CC");
+                if false {
+                    println!();
+                    println!("Doing serializable consistency check");
+                    let mut chains = Chains::new(&n_sizes, &transaction_infos);
+                    println!("{:?}", chains);
+                    if !chains.preprocess() {
+                        println!("found cycle while processing wr and po order");
                     }
-                    None => {
-                        println!("No valid SER history");
-                        println!();
-                        {
-                            println!("Doing snapshot isolation check");
-                            let mut chains = SIChains::new(&n_sizes, &transaction_infos);
-                            println!("{:?}", chains);
-                            if !chains.preprocess() {
-                                println!("found cycle while processing wr and po order");
+                    // println!("{:?}", chains);
+                    // println!("{:?}", chains.serializable_order_dfs());
+                    match chains.serializable_order_dfs() {
+                        Some(order) => {
+                            println!("Serializable progress of transactions");
+                            for node_id in order {
+                                print!("{} ", node_id);
                             }
-                            // println!("{:?}", chains);
-                            match chains.serializable_order_dfs() {
-                                Some(order) => {
-                                    let mut rw_map = HashMap::new();
-                                    println!(
+                            println!();
+                            println!("SER")
+                        }
+                        None => {
+                            println!("No valid SER history");
+                            println!();
+                            {
+                                println!("Doing snapshot isolation check");
+                                let mut chains = SIChains::new(&n_sizes, &transaction_infos);
+                                println!("{:?}", chains);
+                                if !chains.preprocess() {
+                                    println!("found cycle while processing wr and po order");
+                                }
+                                // println!("{:?}", chains);
+                                match chains.serializable_order_dfs() {
+                                    Some(order) => {
+                                        let mut rw_map = HashMap::new();
+                                        println!(
                                         "SI progress of transactions (broken in read and write)"
                                     );
-                                    for node_id in order {
-                                        let ent = rw_map.entry(node_id).or_insert(true);
-                                        if *ent {
-                                            print!("{}R ", node_id);
-                                            *ent = false;
-                                        } else {
-                                            print!("{}W ", node_id);
-                                            *ent = true;
+                                        for node_id in order {
+                                            let ent = rw_map.entry(node_id).or_insert(true);
+                                            if *ent {
+                                                print!("{}R ", node_id);
+                                                *ent = false;
+                                            } else {
+                                                print!("{}W ", node_id);
+                                                *ent = true;
+                                            }
                                         }
+                                        println!();
+                                        println!("SI")
                                     }
-                                    println!();
-                                    println!("SI")
+                                    None => println!("No valid SI history\nNON-SI"),
                                 }
-                                None => println!("No valid SI history\nNON-SI"),
                             }
                         }
                     }

@@ -1,6 +1,8 @@
 extern crate ansi_term;
 extern crate rand;
 
+extern crate petgraph;
+
 pub mod consistency;
 pub mod db;
 pub mod verifier;

@@ -30,17 +30,11 @@ fn main() {
     let mut file = File::open(yaml_path).unwrap();
     file.read_to_end(&mut bytes).unwrap();
     let hist: Vec<Vec<Transaction>> = serde_yaml::from_slice(&bytes).unwrap();
-    println!("{:?}", hist);
-    let mut id_vec = Vec::new();
-    id_vec.push((0, 0, 0));
-    for (i_node, session) in hist.iter().enumerate() {
-        for (i_transaction, transaction) in session.iter().enumerate() {
-            for (i_event, event) in transaction.events.iter().enumerate() {
-                assert_eq!(event.id, id_vec.len());
-                id_vec.push((i_node + 1, i_transaction, i_event));
-            }
-        }
-    }
+    println!("{:#?}", hist);
+    
+    println!("{:?}", hist[0][1]);
+    println!("{:?}", hist[0][2]);
+    println!("{:?}", hist[2][13]);
 
-    transactional_history_verify(&hist, &id_vec);
+    // transactional_history_verify(&hist);
 }

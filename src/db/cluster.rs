@@ -1,6 +1,8 @@
 use db::history::{Event, Transaction};
 use verifier::transactional_history_verify;
 
+use std::collections::HashMap;
+
 use rand;
 use std::net::IpAddr;
 
@@ -22,7 +24,7 @@ pub trait ClusterNode {
     fn exec_session(&self, hist: &mut Vec<Transaction>);
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct TestParams {
     pub id: usize,
     pub n_variable: usize,
@@ -36,7 +38,7 @@ where
 {
     fn n_node(&self) -> usize;
     fn setup(&self) -> bool;
-    fn setup_test(&self, p: &TestParams);
+    fn setup_test(&mut self, p: &TestParams);
     fn get_node(&self, id: usize) -> Node;
     fn get_cluster_node(&self, id: usize) -> N;
     fn cleanup(&self);
@@ -47,13 +49,12 @@ where
             .map(|(i, ip)| Node {
                 ip: ip.parse().unwrap(),
                 id: i + 1,
-            }).collect()
+            })
+            .collect()
     }
 
-    fn gen_history(&self, p: &TestParams) -> (Vec<Vec<Transaction>>, Vec<(usize, usize, usize)>) {
-        let n_node = self.n_node();
-        let mut id_vec = Vec::with_capacity(n_node * p.n_transaction * p.n_event + 1);
-        id_vec.push((0, 0, 0));
+    fn gen_history(&self, p: &TestParams) -> Vec<Vec<Transaction>> {
+        let mut counters = HashMap::new();
         let mut random_generator = rand::thread_rng();
         let variable_range = Uniform::from(0..p.n_variable);
         let hist = (1..(self.n_node() + 1))
@@ -64,24 +65,41 @@ where
                             .map(|i_event| {
                                 let variable = variable_range.sample(&mut random_generator);
                                 let event = if random_generator.gen() {
-                                    Event::read(id_vec.len(), variable)
+                                    Event::read(variable)
                                 } else {
-                                    Event::write(id_vec.len(), variable, id_vec.len())
+                                    let value = {
+                                        let entry = counters.entry(variable).or_insert(0);
+                                        *entry += 1;
+                                        *entry
+                                    };
+                                    Event::write(variable, value)
                                 };
-                                id_vec.push((i_node, i_transaction, i_event));
                                 event
-                            }).collect(),
+                            })
+                            .collect(),
                         success: false,
-                    }).collect::<Vec<_>>()
-            }).collect::<Vec<_>>();
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
 
-        (hist, id_vec)
+        hist
     }
 
-    fn test(&self, p: &TestParams) -> Option<usize> {
-        let (mut hist, id_vec) = self.gen_history(p);
+    fn test(&mut self, p: &TestParams) -> Option<usize> {
+        // let mut hist = self.gen_history(p);
+        use std::fs::File;
+        use std::io::Read;
+
+        let mut bytes = Vec::new();
+        let mut file = File::open("../non-cc.yml").unwrap();
+        file.read_to_end(&mut bytes).unwrap();
+        let mut hist: Vec<Vec<Transaction>> = serde_yaml::from_slice(&bytes).unwrap();
+        // println!("{:?}", hist);
         self.setup_test(p);
+        println!("executing history - START");
         self.exec_history(&mut hist);
+        println!("executing history - END");
         for (i_sesion, session) in hist.iter().enumerate() {
             println!("node {}", i_sesion + 1);
             for transaction in session.iter() {
@@ -90,11 +108,11 @@ where
             println!();
         }
 
-        println!("# yaml");
-        println!("{}", serde_yaml::to_string(&hist).unwrap());
-        println!();
+        // println!("# yaml");
+        // println!("{}", serde_yaml::to_string(&hist).unwrap());
+        // println!();
 
-        transactional_history_verify(&hist, &id_vec);
+        transactional_history_verify(&hist);
         self.cleanup();
         None
     }
@@ -108,7 +126,8 @@ where
                     cluster_node.exec_session(&mut single_hist);
                     single_hist
                 })
-            }).collect::<Vec<_>>();
+            })
+            .collect::<Vec<_>>();
         hist.extend(threads.drain(..).map(|t| t.join().unwrap()));
     }
 }
