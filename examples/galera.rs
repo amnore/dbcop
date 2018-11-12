@@ -2,8 +2,10 @@ extern crate clap;
 extern crate dbcop;
 extern crate mysql;
 
-use dbcop::db::cluster::{Cluster, ClusterNode, Node, TestParams};
-use dbcop::db::history::Transaction;
+use std::path::Path;
+
+use dbcop::db::cluster::{Cluster, ClusterNode, Node};
+use dbcop::db::history::{HistParams, Transaction};
 
 use clap::{App, Arg};
 
@@ -156,57 +158,52 @@ impl Cluster<GaleraNode> for GaleraCluster {
     fn get_cluster_node(&self, id: usize) -> GaleraNode {
         From::from(self.get_node(id))
     }
-    fn setup_test(&self, p: &TestParams) {
-        self.create_variables(p.n_variable);
+    fn setup_test(&mut self, p: &HistParams) {
+        self.create_variables(p.get_n_variable());
     }
     fn cleanup(&self) {
         self.drop_database();
     }
+    fn info(&self) -> String {
+        "Galera".to_string()
+    }
 }
 
 fn main() {
-    let matches = App::new("galera")
+    let matches = App::new("Galera")
         .version("1.0")
         .author("Ranadeep")
-        .about("verifies a galera cluster")
+        .about("executes histories on Galera")
         .arg(
-            Arg::with_name("n_variable")
-                .long("nval")
-                .short("v")
-                .default_value("5"),
-        ).arg(
-            Arg::with_name("n_transaction")
-                .long("ntxn")
-                .short("t")
-                .default_value("5"),
-        ).arg(
-            Arg::with_name("n_event")
-                .long("nevt")
-                .short("e")
-                .default_value("2"),
-        ).arg(
+            Arg::with_name("hist_dir")
+                .long("dir")
+                .short("d")
+                .takes_value(true)
+                .required(true),
+        )
+        .arg(
+            Arg::with_name("hist_out")
+                .long("out")
+                .short("o")
+                .takes_value(true)
+                .required(true),
+        )
+        .arg(
             Arg::with_name("ips")
                 .help("Cluster ips")
                 .multiple(true)
                 .required(true),
-        ).get_matches();
+        )
+        .get_matches();
+
+    let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
+    let hist_out = Path::new(matches.value_of("hist_out").unwrap());
+
     let ips: Vec<_> = matches.values_of("ips").unwrap().collect();
 
-    let cluster = GaleraCluster::new(&ips);
-
-    // println!("{:?}", cluster);
+    let mut cluster = GaleraCluster::new(&ips);
 
     cluster.setup();
 
-    // test_id, n_variable, n_transaction, n_event
-    let params = TestParams {
-        id: 0,
-        n_variable: matches.value_of("n_variable").unwrap().parse().unwrap(),
-        n_transaction: matches.value_of("n_transaction").unwrap().parse().unwrap(),
-        n_event: matches.value_of("n_event").unwrap().parse().unwrap(),
-    };
-
-    println!("{:?}", params);
-
-    cluster.test(&params);
+    cluster.execute_all(hist_dir, hist_out);
 }

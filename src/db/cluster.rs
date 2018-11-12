@@ -1,18 +1,22 @@
-use db::history::{Event, Transaction};
-use verifier::transactional_history_verify;
+use db::history::{HistParams, History, Transaction};
+// use verifier::Verifier;
 
-use std::collections::HashMap;
+// use std::collections::HashMap;
 
-use rand;
+use std::fs;
+use std::fs::File;
+use std::io::{BufReader, BufWriter};
+use std::path::Path;
+
 use std::net::IpAddr;
 
-use rand::distributions::{Distribution, Uniform};
-use rand::Rng;
+// use rand::distributions::{Distribution, Uniform};
+// use rand::Rng;
 use std::thread;
 
-use std::convert::From;
+// use std::convert::From;
 
-use serde_yaml;
+// use serde_yaml;
 
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -24,24 +28,17 @@ pub trait ClusterNode {
     fn exec_session(&self, hist: &mut Vec<Transaction>);
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct TestParams {
-    pub id: usize,
-    pub n_variable: usize,
-    pub n_transaction: usize,
-    pub n_event: usize,
-}
-
 pub trait Cluster<N>
 where
     N: 'static + Send + ClusterNode,
 {
     fn n_node(&self) -> usize;
     fn setup(&self) -> bool;
-    fn setup_test(&mut self, p: &TestParams);
+    fn setup_test(&mut self, p: &HistParams);
     fn get_node(&self, id: usize) -> Node;
     fn get_cluster_node(&self, id: usize) -> N;
     fn cleanup(&self);
+    fn info(&self) -> String;
 
     fn node_vec(ips: &Vec<&str>) -> Vec<Node> {
         ips.iter()
@@ -53,66 +50,51 @@ where
             .collect()
     }
 
-    fn gen_history(&self, p: &TestParams) -> Vec<Vec<Transaction>> {
-        let mut counters = HashMap::new();
-        let mut random_generator = rand::thread_rng();
-        let variable_range = Uniform::from(0..p.n_variable);
-        let hist = (1..(self.n_node() + 1))
-            .map(|i_node| {
-                (0..p.n_transaction)
-                    .map(|i_transaction| Transaction {
-                        events: (0..p.n_event)
-                            .map(|i_event| {
-                                let variable = variable_range.sample(&mut random_generator);
-                                let event = if random_generator.gen() {
-                                    Event::read(variable)
-                                } else {
-                                    let value = {
-                                        let entry = counters.entry(variable).or_insert(0);
-                                        *entry += 1;
-                                        *entry
-                                    };
-                                    Event::write(variable, value)
-                                };
-                                event
-                            })
-                            .collect(),
-                        success: false,
-                    })
-                    .collect::<Vec<_>>()
+    fn execute_all(&mut self, r_dir: &Path, o_dir: &Path) -> Option<usize> {
+        let histories: Vec<History> = fs::read_dir(r_dir)
+            .unwrap()
+            .filter_map(|entry_res| match entry_res {
+                Ok(ref entry) if !&entry.path().is_dir() => {
+                    let file = File::open(entry.path()).unwrap();
+                    let buf_reader = BufReader::new(file);
+                    Some(serde_json::from_reader(buf_reader).unwrap())
+                }
+                _ => None,
             })
-            .collect::<Vec<_>>();
+            .collect();
 
-        hist
-    }
-
-    fn test(&mut self, p: &TestParams) -> Option<usize> {
-        // let mut hist = self.gen_history(p);
-        use std::fs::File;
-        use std::io::Read;
-
-        let mut bytes = Vec::new();
-        let mut file = File::open("../non-cc.yml").unwrap();
-        file.read_to_end(&mut bytes).unwrap();
-        let mut hist: Vec<Vec<Transaction>> = serde_yaml::from_slice(&bytes).unwrap();
-        // println!("{:?}", hist);
-        self.setup_test(p);
-        println!("executing history - START");
-        self.exec_history(&mut hist);
-        println!("executing history - END");
-        for (i_sesion, session) in hist.iter().enumerate() {
-            println!("node {}", i_sesion + 1);
-            for transaction in session.iter() {
-                println!("{:?}", transaction);
-            }
-            println!();
+        for ref history in histories.iter() {
+            let curr_dir = o_dir.join(format!("hist-{:05}", history.get_id()));
+            fs::create_dir(&curr_dir).expect("couldn't create dir");
+            self.execute(history, &curr_dir);
         }
 
-        // println!("# yaml");
-        // println!("{}", serde_yaml::to_string(&hist).unwrap());
-        // println!();
+        None
+    }
 
-        transactional_history_verify(&hist);
+    fn execute(&mut self, hist: &History, dir: &Path) -> Option<usize> {
+        self.setup_test(hist.get_params());
+
+        let mut exec = hist.get_cloned_data();
+
+        let start_time = chrono::Local::now();
+
+        self.exec_history(&mut exec);
+
+        let end_time = chrono::Local::now();
+
+        let exec_hist = History::new(
+            hist.get_cloned_params(),
+            self.info(),
+            start_time,
+            end_time,
+            exec,
+        );
+
+        let file = File::create(dir.join("history.json")).unwrap();
+        let buf_writer = BufWriter::new(file);
+        serde_json::to_writer_pretty(buf_writer, &exec_hist).expect("dumping to json went wrong");
+
         self.cleanup();
         None
     }

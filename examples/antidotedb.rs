@@ -3,8 +3,10 @@ extern crate byteorder;
 extern crate clap;
 extern crate dbcop;
 
-use dbcop::db::cluster::{Cluster, ClusterNode, Node, TestParams};
-use dbcop::db::history::Transaction;
+use std::path::Path;
+
+use dbcop::db::cluster::{Cluster, ClusterNode, Node};
+use dbcop::db::history::{HistParams, Transaction};
 
 use clap::{App, Arg};
 
@@ -119,6 +121,35 @@ impl AntidoteCluster {
                 println!("COMMIT ERROR while init");
             }
         }
+
+        self.0.iter_mut().for_each(|x| {
+            let mut conn = AntidoteDB::connect_with_string(&x.addr);
+
+            let timestamp = x.timestamp.clone();
+
+            // println!("{:?}", timestamp);
+
+            let db_transaction = conn.start_transaction(timestamp.as_ref());
+
+            let objs: Vec<_> = (0..n_variable)
+                .map(|variable| LWWREG::new(&format!("{}", variable), "dbcop"))
+                .collect();
+
+            match conn.mult_read_in_transaction(&objs, &db_transaction) {
+                Ok(values) => assert!((0..n_variable).all(|var| {
+                    let bytes = values[var].get_reg().get_value();
+                    Cursor::new(bytes).read_u64::<BigEndian>().unwrap() == 0
+                })),
+                Err(_) => unreachable!(),
+            }
+
+            match conn.commit_transaction(&db_transaction) {
+                Ok(commit_time) => {}
+                Err(_e) => unreachable!(),
+            }
+        });
+
+        println!("zero init is done");
     }
 
     fn drop_database(&self) {}
@@ -141,11 +172,14 @@ impl Cluster<AntidoteNode> for AntidoteCluster {
     fn get_cluster_node(&self, id: usize) -> AntidoteNode {
         self.0[id].clone()
     }
-    fn setup_test(&mut self, p: &TestParams) {
-        self.create_variables(p.n_variable);
+    fn setup_test(&mut self, p: &HistParams) {
+        self.create_variables(p.get_n_variable());
     }
     fn cleanup(&self) {
         self.drop_database();
+    }
+    fn info(&self) -> String {
+        "AntidoteDB".to_string()
     }
 }
 
@@ -153,26 +187,21 @@ fn main() {
     let matches = App::new("Antidote")
         .version("1.0")
         .author("Ranadeep")
-        .about("verifies a Antidote cluster")
+        .about("executes histories on AntidoteDB")
         .arg(
-            Arg::with_name("n_variable")
-                .long("nval")
-                .short("v")
-                .default_value("5"),
+            Arg::with_name("hist_dir")
+                .long("dir")
+                .short("d")
+                .takes_value(true)
+                .required(true),
         )
         .arg(
-            Arg::with_name("n_transaction")
-                .long("ntxn")
-                .short("t")
-                .default_value("5"),
+            Arg::with_name("hist_out")
+                .long("out")
+                .short("o")
+                .takes_value(true)
+                .required(true),
         )
-        .arg(
-            Arg::with_name("n_event")
-                .long("nevt")
-                .short("e")
-                .default_value("2"),
-        )
-        .arg(Arg::with_name("history_output").long("output").short("o"))
         .arg(
             Arg::with_name("ips")
                 .help("Cluster ips")
@@ -180,23 +209,15 @@ fn main() {
                 .required(true),
         )
         .get_matches();
+
+    let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
+    let hist_out = Path::new(matches.value_of("hist_out").unwrap());
+
     let ips: Vec<_> = matches.values_of("ips").unwrap().collect();
 
     let mut cluster = AntidoteCluster::new(&ips);
 
-    // println!("{:?}", cluster);
-
     cluster.setup();
 
-    // test_id, n_variable, n_transaction, n_event
-    let params = TestParams {
-        n_variable: matches.value_of("n_variable").unwrap().parse().unwrap(),
-        n_transaction: matches.value_of("n_transaction").unwrap().parse().unwrap(),
-        n_event: matches.value_of("n_event").unwrap().parse().unwrap(),
-        ..Default::default()
-    };
-
-    println!("{:?}", params);
-
-    cluster.test(&params);
+    cluster.execute_all(hist_dir, hist_out);
 }

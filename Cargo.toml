@@ -15,6 +15,11 @@ serde_json = "*"
 serde_yaml = "*"
 byteorder = "*"
 petgraph = "*"
+rayon = "*"
+slog = "*"
+slog-term = "*"
+slog-stream = "*"
+chrono = { version = "*", features = ["serde"] }
 antidotedb = { path = "../antidotedb" }
 
 [profile.release]

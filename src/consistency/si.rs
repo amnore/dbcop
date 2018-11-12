@@ -2,11 +2,13 @@ use std::collections::{HashMap, HashSet};
 
 use consistency::ser::Chains;
 
+use slog::Logger;
+
 pub struct SIChains {}
 
 impl SIChains {
     pub fn transform(
-        n_sizes: &Vec<usize>,
+        // n_sizes: &Vec<usize>,
         txns_info: &HashMap<(usize, usize), (HashMap<usize, (usize, usize)>, HashSet<usize>)>,
     ) -> HashMap<(usize, usize), (HashMap<usize, (usize, usize)>, HashSet<usize>)> {
         let mut new_txns_info = HashMap::new();
@@ -35,8 +37,8 @@ impl SIChains {
             }
         }
         // SI - CONFLICT axiom - WW < VIS, in Prefix Consistency, don't need to do this.
-        for (&(po_id_u, txn_id_u), (rd_info_u, wr_info_u)) in txns_info.iter() {
-            for (&(po_id_v, txn_id_v), (rd_info_v, wr_info_v)) in txns_info.iter() {
+        for (&(po_id_u, txn_id_u), (_, wr_info_u)) in txns_info.iter() {
+            for (&(po_id_v, txn_id_v), (_, wr_info_v)) in txns_info.iter() {
                 if po_id_u != po_id_v {
                     if wr_info_u.intersection(&wr_info_v).next().is_some() {
                         curr_var += 1;
@@ -65,9 +67,10 @@ impl SIChains {
     pub fn new(
         n_sizes: &Vec<usize>,
         txns_info: &HashMap<(usize, usize), (HashMap<usize, (usize, usize)>, HashSet<usize>)>,
+        log: Logger,
     ) -> Chains {
         let new_n_sizes: Vec<_> = n_sizes.iter().map(|&x| x << 1).collect();
-        let new_txns_info = SIChains::transform(n_sizes, txns_info);
-        Chains::new(&new_n_sizes, &new_txns_info)
+        let new_txns_info = SIChains::transform(txns_info);
+        Chains::new(&new_n_sizes, &new_txns_info, log)
     }
 }

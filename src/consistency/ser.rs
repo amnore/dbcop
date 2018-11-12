@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use consistency::util::EdgeClosure;
 
+use slog::Logger;
+
 #[derive(Debug)]
 pub struct Chains {
     pub n_sizes: Vec<usize>,
@@ -13,12 +15,14 @@ pub struct Chains {
     pub wr_order: HashMap<usize, HashMap<usize, HashSet<usize>>>,
     pub wr_order_by_txn: HashMap<usize, HashMap<usize, HashSet<usize>>>,
     pub vis_closure: EdgeClosure,
+    log: Logger,
 }
 
 impl Chains {
     pub fn new(
         n_sizes: &Vec<usize>,
         txns_info: &HashMap<(usize, usize), (HashMap<usize, (usize, usize)>, HashSet<usize>)>,
+        log: Logger,
     ) -> Self {
         let root_txn_id = 0;
         let mut id_to_tuple = Vec::with_capacity(n_sizes.iter().sum::<usize>() + 1usize);
@@ -70,6 +74,7 @@ impl Chains {
             vis_closure: EdgeClosure::new(),
             id_to_tuple: id_to_tuple,
             tuple_to_id: tuple_to_id,
+            log,
         }
     }
 
@@ -124,7 +129,7 @@ impl Chains {
             for (j, &id) in po.iter().enumerate() {
                 if j < po.len() - 1 {
                     if self.vis_closure.contains(id + 1, id) {
-                        println!("found cycles in VIS");
+                        info!(self.log, "found cycles in VIS");
                         return false;
                     }
                     self.vis_closure.add_edge(id, id + 1);
@@ -132,7 +137,7 @@ impl Chains {
             }
             if let Some(&u) = po.first() {
                 if self.vis_closure.contains(u, self.root_txn_id) {
-                    println!("found cycles in VIS");
+                    info!(self.log, "found cycles in VIS");
                     return false;
                 }
                 self.vis_closure.add_edge(self.root_txn_id, u);
@@ -143,7 +148,7 @@ impl Chains {
             for (&u, vs) in info {
                 for &v in vs.iter() {
                     if self.vis_closure.contains(v, u) {
-                        println!("found cycles in VIS");
+                        info!(self.log, "found cycles in VIS");
                         return false;
                     }
                     self.vis_closure.add_edge(u, v);
@@ -163,30 +168,34 @@ impl Chains {
                         for (&u_, _) in wr_x.iter() {
                             if u != u_ && v != u_ {
                                 if self.vis_closure.contains(u, u_) {
-                                    println!(
+                                    info!(self.log,
                                         "adding RW ({1}, {2}), WR_{3}({0}, {1}), {3} in W({2}), VIS({0}, {2})",
                                         u, v, u_, _x
                                     );
                                     if self.vis_closure.contains(u_, v) {
-                                        // println!("cycle: {0} -> {1} -> {0}", v, u_);
-                                        println!(
+                                        // info!(self.log, "cycle: {0} -> {1} -> {0}", v, u_);
+                                        info!(
+                                            self.log,
                                             "cycle: {0:?} -> {1:?} -> {0:?}",
-                                            self.id_to_tuple[v], self.id_to_tuple[u_]
+                                            self.id_to_tuple[v],
+                                            self.id_to_tuple[u_]
                                         );
                                         return false;
                                     }
                                     new_edge.push((v, u_));
                                 }
                                 if self.vis_closure.contains(u_, v) {
-                                    println!(
+                                    info!(self.log,
                                         "adding WW ({2}, {0}), WR_{3}({0}, {1}), {3} in W({2}), VIS({2}, {1})",
                                         u, v, u_, _x
                                     );
                                     if self.vis_closure.contains(u, u_) {
-                                        // println!("cycle: {0} -> {1} -> {0}", u_, u);
-                                        println!(
+                                        // info!(self.log, "cycle: {0} -> {1} -> {0}", u_, u);
+                                        info!(
+                                            self.log,
                                             "cycle: {0:?} -> {1:?} -> {0:?}",
-                                            self.id_to_tuple[u_], self.id_to_tuple[u]
+                                            self.id_to_tuple[u_],
+                                            self.id_to_tuple[u]
                                         );
                                         return false;
                                     }
@@ -202,10 +211,10 @@ impl Chains {
 
             for (u, v) in new_edge {
                 if self.vis_closure.contains(v, u) {
-                    // println!("cycle: {0} -> {1} -> {0}", u, v);
-                    println!(
-                        "cycle: {0:?} -> {1:?} -> {0:?}",
-                        self.id_to_tuple[u], self.id_to_tuple[v]
+                    // info!(self.log, "cycle: {0} -> {1} -> {0}", u, v);
+                    info!(
+                        self.log,
+                        "cycle: {0:?} -> {1:?} -> {0:?}", self.id_to_tuple[u], self.id_to_tuple[v]
                     );
                     return false;
                 }
@@ -232,11 +241,12 @@ impl Chains {
         prev_order: &mut Vec<usize>,
         seen: &mut HashSet<Vec<usize>>,
     ) -> bool {
-        if cut[0] == 1 && cut
-            .iter()
-            .skip(1)
-            .zip(self.n_sizes.iter())
-            .all(|(&l1, &l2)| l1 == l2)
+        if cut[0] == 1
+            && cut
+                .iter()
+                .skip(1)
+                .zip(self.n_sizes.iter())
+                .all(|(&l1, &l2)| l1 == l2)
         {
             return true;
         }
@@ -248,7 +258,7 @@ impl Chains {
                     // for _ in 1..cut.iter().sum() {
                     //     print!(" ");
                     // }
-                    // println!("{:?}", cut);
+                    // info!(self.log, "{:?}", cut);
                     {
                         let (ref rd_info, ref wr_info) = self.txns[cand];
                         if wr_info.iter().all(|&x| match last_wr.get(&x) {
@@ -372,13 +382,13 @@ impl Chains {
             &mut seen,
         ) {
             {
-                // println!("checking if found order is actually serializable.");
+                // info!(self.log, "checking if found order is actually serializable.");
                 let mut test_closure = self.vis_closure.clone();
                 for sl in prev_order.windows(2) {
-                    // println!("{:?}", sl);
+                    // info!(self.log, "{:?}", sl);
                     let (u, v) = (sl[0], sl[1]);
                     if test_closure.contains(v, u) {
-                        println!("this order is not correct!!");
+                        info!(self.log, "this order is not correct!!");
                         break;
                     }
                     test_closure.add_edge(u, v);

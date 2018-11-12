@@ -1,6 +1,9 @@
 extern crate ansi_term;
 extern crate rand;
 
+extern crate chrono;
+extern crate rayon;
+
 extern crate petgraph;
 
 pub mod consistency;
@@ -13,3 +16,7 @@ extern crate serde_yaml;
 
 #[macro_use]
 extern crate serde_derive;
+
+#[macro_use]
+extern crate slog;
+extern crate slog_term;

@@ -1,19 +1,20 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
 
-use std::process::Command;
+use std::process::{Command, Stdio};
+
+use std::path::PathBuf;
 
 use std::io::BufRead;
 use std::io::BufReader;
 
-use std::io::Read;
 use std::io::Write;
 
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Clone, Copy, Debug)]
 pub enum Edge {
     CO,
     VI,
-    WR(usize),
+    // WR(usize),
     WW(usize),
     RW(usize),
 }
@@ -29,22 +30,22 @@ impl CNF {
     fn add_variable(&mut self, var: usize, sign: bool) {
         self.n_variable = std::cmp::max(self.n_variable, var);
         if sign {
-            write!(self.cnf_string, "{} ", var);
+            write!(self.cnf_string, "{} ", var).expect("cnf write failed");
         } else {
-            write!(self.cnf_string, "-{} ", var);
+            write!(self.cnf_string, "-{} ", var).expect("cnf write failed");
         }
     }
 
     fn finish_clause(&mut self) {
-        write!(self.cnf_string, " 0\n");
+        write!(self.cnf_string, " 0\n").expect("cnf write failed");
         self.n_clause += 1;
     }
 
-    fn write_to_file(&self, path: &str) {
+    fn write_to_file(&self, path: &PathBuf) {
         let mut file = OpenOptions::new()
-            .read(true)
             .write(true)
             .create(true)
+            .truncate(true)
             .open(path)
             .expect("couldn't create");
 
@@ -86,7 +87,7 @@ impl Sat {
             }
         }
 
-        for (&x, mut wr_map) in write_variable.iter_mut() {
+        for (_, mut wr_map) in write_variable.iter_mut() {
             wr_map.entry((0, 0)).or_insert_with(Default::default);
         }
 
@@ -198,7 +199,7 @@ impl Sat {
         for (&x, ref wr_map) in self.write_variable.iter() {
             for (&u1, ref vs) in wr_map.iter() {
                 for &v in vs.iter() {
-                    clauses.push(vec![(Edge::WR(x), u1, v, true)]);
+                    // clauses.push(vec![(Edge::WR(x), u1, v, true)]);
                     clauses.push(vec![(Edge::VI, u1, v, true)]);
                 }
                 for (&u2, _) in wr_map.iter() {
@@ -281,14 +282,19 @@ impl Sat {
         self.add_clauses(&clauses);
     }
 
-    pub fn solve(&self) -> bool {
-        self.cnf.write_to_file("hist.cnf");
+    pub fn solve(&self, path: &PathBuf) -> bool {
+        self.cnf.write_to_file(&path.join("hist.cnf"));
 
-        let output = Command::new("minisat")
+        if let Ok(mut child) = Command::new("minisat")
             .arg("hist.cnf")
             .arg("result.cnf")
-            .output()
-            .expect("failed to execute process");
+            .stdout(Stdio::null())
+            .spawn()
+        {
+            child.wait().expect("failed to execute process");
+        } else {
+            panic!("failed to execute process")
+        }
 
         // println!("status: {}", output.status);
         // println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
@@ -328,15 +334,15 @@ impl Sat {
             let mut edges: Vec<_> = self
                 .edge_variable
                 .iter()
-                .filter(|(&k, &v)| assignments[&v])
+                .filter(|(_, &v)| assignments[&v])
                 .map(|(&k, _)| k)
                 .collect();
 
             edges.sort_unstable();
 
-            for e in &edges {
-                // println!("{:?}", e);
-            }
+            // for e in &edges {
+            //     println!("{:?}", e);
+            // }
 
             true
         } else {
@@ -346,8 +352,8 @@ impl Sat {
 
     pub fn add_clause(&mut self, edges: &Vec<(Edge, (usize, usize), (usize, usize), bool)>) {
         for edge in edges.iter() {
-            let variable = self.get_variable(edge.0, edge.1, edge.2);
-            self.cnf.add_variable(variable, edge.3);
+            let (variable, flip) = self.get_variable(edge.0, edge.1, edge.2);
+            self.cnf.add_variable(variable, edge.3 ^ flip);
         }
         self.cnf.finish_clause();
     }
@@ -361,9 +367,23 @@ impl Sat {
         }
     }
 
-    pub fn get_variable(&mut self, edge: Edge, u: (usize, usize), v: (usize, usize)) -> usize {
+    pub fn get_variable(
+        &mut self,
+        edge: Edge,
+        u: (usize, usize),
+        v: (usize, usize),
+    ) -> (usize, bool) {
         let usable = self.edge_variable.len() + 1;
-        let entry = self.edge_variable.entry((edge, u, v)).or_insert(usable);
-        *entry
+        let entry = self
+            .edge_variable
+            .entry(match edge {
+                Edge::CO if u > v => (edge, v, u),
+                _ => (edge, u, v),
+            })
+            .or_insert(usable);
+        match edge {
+            Edge::CO if u > v => (*entry, false),
+            _ => (*entry, true),
+        }
     }
 }
