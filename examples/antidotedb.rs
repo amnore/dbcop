@@ -3,6 +3,7 @@ extern crate byteorder;
 extern crate clap;
 extern crate dbcop;
 
+use std::fs;
 use std::path::Path;
 
 use dbcop::db::cluster::{Cluster, ClusterNode, Node};
@@ -149,7 +150,7 @@ impl AntidoteCluster {
             }
         });
 
-        println!("zero init is done");
+        // println!("zero init is done");
     }
 
     fn drop_database(&self) {}
@@ -213,11 +214,11 @@ fn main() {
     let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
     let hist_out = Path::new(matches.value_of("hist_out").unwrap());
 
+    fs::create_dir_all(hist_out).expect("couldn't create directory");
+
     let ips: Vec<_> = matches.values_of("ips").unwrap().collect();
 
     let mut cluster = AntidoteCluster::new(&ips);
 
-    cluster.setup();
-
-    cluster.execute_all(hist_dir, hist_out);
+    cluster.execute_all(hist_dir, hist_out, 50);
 }

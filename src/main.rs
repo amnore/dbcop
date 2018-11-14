@@ -49,7 +49,7 @@ fn main() {
                 )
                 .arg(
                     Arg::with_name("n_variable")
-                        .long("nval")
+                        .long("nvar")
                         .short("v")
                         .default_value("5")
                         .help("Number of variables per history"),
@@ -84,7 +84,32 @@ fn main() {
                         .short("o")
                         .takes_value(true)
                         .required(true)
-                        .help("Directory to output the results."),
+                        .help("Directory to output the results"),
+                )
+                .arg(
+                    Arg::with_name("sat")
+                        .long("sat")
+                        .help("Use MiniSAT as backend"),
+                )
+                .arg(
+                    Arg::with_name("bicomponent")
+                        .long("bic")
+                        .help("Use BiComponent"),
+                )
+                .arg(
+                    Arg::with_name("serializable")
+                        .long("ser")
+                        .help("Check for Serializablity"),
+                )
+                .arg(
+                    Arg::with_name("snapshot_isolation")
+                        .long("si")
+                        .help("Check for Snapshot Isolation"),
+                )
+                .arg(
+                    Arg::with_name("causal")
+                        .long("cc")
+                        .help("Check for Causality"),
                 )
                 .about("Verifies histories"),
         ])
@@ -92,53 +117,76 @@ fn main() {
 
     let app_matches = app.get_matches();
 
-    if let Some(matches) = app_matches.subcommand_matches("generate") {
-        let dir = Path::new(matches.value_of("g_directory").unwrap());
+    match app_matches.subcommand() {
+        ("generate", Some(matches)) => {
+            let dir = Path::new(matches.value_of("g_directory").unwrap());
 
-        if !dir.is_dir() {}
+            if !dir.is_dir() {
+                fs::create_dir_all(dir).expect("failed to create directory");
+            }
 
-        let mut histories = generate_mult_histories(
-            matches.value_of("n_history").unwrap().parse().unwrap(),
-            matches.value_of("n_node").unwrap().parse().unwrap(),
-            matches.value_of("n_variable").unwrap().parse().unwrap(),
-            matches.value_of("n_transaction").unwrap().parse().unwrap(),
-            matches.value_of("n_event").unwrap().parse().unwrap(),
-        );
+            let mut histories = generate_mult_histories(
+                matches.value_of("n_history").unwrap().parse().unwrap(),
+                matches.value_of("n_node").unwrap().parse().unwrap(),
+                matches.value_of("n_variable").unwrap().parse().unwrap(),
+                matches.value_of("n_transaction").unwrap().parse().unwrap(),
+                matches.value_of("n_event").unwrap().parse().unwrap(),
+            );
 
-        for hist in histories.drain(..) {
-            let mut file =
-                File::create(dir.join(format!("hist-{:05}.json", hist.get_id()))).unwrap();
-            let mut buf_writer = BufWriter::new(file);
-            serde_json::to_writer_pretty(buf_writer, &hist)
-                .expect("dumping history to json file went wrong");
+            for hist in histories.drain(..) {
+                let mut file =
+                    File::create(dir.join(format!("hist-{:05}.json", hist.get_id()))).unwrap();
+                let mut buf_writer = BufWriter::new(file);
+                serde_json::to_writer_pretty(buf_writer, &hist)
+                    .expect("dumping history to json file went wrong");
+            }
         }
-    } else if let Some(matches) = app_matches.subcommand_matches("verify") {
-        let v_dir = Path::new(matches.value_of("v_directory").unwrap());
+        ("verify", Some(matches)) => {
+            let v_dir = Path::new(matches.value_of("v_directory").unwrap());
 
-        if !v_dir.is_dir() {}
+            if !v_dir.is_dir() {}
 
-        let histories: Vec<History> = fs::read_dir(v_dir)
-            .unwrap()
-            .filter_map(|entry_res| match entry_res {
-                Ok(ref entry) if entry.path().is_dir() => {
-                    let file = File::open(entry.path().join("history.json")).unwrap();
-                    let buf_reader = BufReader::new(file);
-                    Some(serde_json::from_reader(buf_reader).unwrap())
+            let histories: Vec<History> = fs::read_dir(v_dir)
+                .unwrap()
+                .filter_map(|entry_res| match entry_res {
+                    Ok(ref entry) if entry.path().is_dir() => {
+                        let file = File::open(entry.path().join("history.json")).unwrap();
+                        let buf_reader = BufReader::new(file);
+                        Some(serde_json::from_reader(buf_reader).unwrap())
+                    }
+                    _ => None,
+                })
+                .collect();
+
+            // println!("{:?}", histories);
+
+            let o_dir = Path::new(matches.value_of("o_directory").unwrap());
+
+            if !o_dir.is_dir() {
+                fs::create_dir_all(o_dir).expect("failed to create directory");
+            }
+
+            histories.iter().for_each(|ref hist| {
+                let curr_dir = o_dir.join(format!("hist-{:05}", hist.get_id()));
+
+                let mut verifier = Verifier::new(curr_dir.to_path_buf());
+
+                if matches.is_present("causal") {
+                    verifier.model("cc");
+                } else if matches.is_present("snapshot_isolation") {
+                    verifier.model("si");
+                } else if matches.is_present("serializable") {
+                    verifier.model("ser");
                 }
-                _ => None,
-            })
-            .collect();
 
-        // println!("{:?}", histories);
+                verifier.sat(matches.is_present("sat"));
+                verifier.bicomponent(matches.is_present("bicomponent"));
 
-        let o_dir = Path::new(matches.value_of("o_directory").unwrap());
-
-        histories.iter().for_each(|ref hist| {
-            let curr_dir = o_dir.join(format!("hist-{:05}", hist.get_id()));
-
-            let verifier = Verifier::new(curr_dir.to_path_buf());
-
-            verifier.transactional_history_verify(hist.get_data());
-        });
+                if !verifier.transactional_history_verify(hist.get_data()) {
+                    println!("hist-{:05} failed", hist.get_id());
+                }
+            });
+        }
+        _ => unreachable!(),
     }
 }

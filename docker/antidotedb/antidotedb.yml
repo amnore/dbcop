@@ -21,3 +21,31 @@ services:
     environment:
       SHORT_NAME:   "true"
       NODE_NAME:    antidote@antidote3
+  antidote4:
+    image:          antidotedb/antidote
+    container_name: antidote4
+    hostname:       antidote4
+    environment:
+      SHORT_NAME:   "true"
+      NODE_NAME:    antidote@antidote4
+  antidote5:
+    image:          antidotedb/antidote
+    container_name: antidote5
+    hostname:       antidote5
+    environment:
+      SHORT_NAME:   "true"
+      NODE_NAME:    antidote@antidote5
+  antidote6:
+    image:          antidotedb/antidote
+    container_name: antidote6
+    hostname:       antidote6
+    environment:
+      SHORT_NAME:   "true"
+      NODE_NAME:    antidote@antidote6
+  antidote7:
+    image:          antidotedb/antidote
+    container_name: antidote7
+    hostname:       antidote7
+    environment:
+      SHORT_NAME:   "true"
+      NODE_NAME:    antidote@antidote7

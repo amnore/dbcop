@@ -227,7 +227,7 @@ impl Sat {
         self.add_clauses(&clauses);
     }
 
-    pub fn causal(&mut self) {
+    pub fn read_atomic(&mut self) {
         let mut clauses = Vec::new();
 
         for (&x, ref wr_map) in self.write_variable.iter() {
@@ -283,11 +283,13 @@ impl Sat {
     }
 
     pub fn solve(&self, path: &PathBuf) -> bool {
-        self.cnf.write_to_file(&path.join("hist.cnf"));
+        let inp_cnf = path.join("history.cnf");
+        let out_cnf = path.join("result.cnf");
+        self.cnf.write_to_file(&inp_cnf);
 
         if let Ok(mut child) = Command::new("minisat")
-            .arg("hist.cnf")
-            .arg("result.cnf")
+            .arg(&inp_cnf)
+            .arg(&out_cnf)
             .stdout(Stdio::null())
             .spawn()
         {
@@ -300,7 +302,7 @@ impl Sat {
         // println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
         // println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
 
-        let result = File::open("result.cnf").expect("file couldn't open");
+        let result = File::open(&out_cnf).expect("file couldn't open");
 
         let reader = BufReader::new(&result);
 

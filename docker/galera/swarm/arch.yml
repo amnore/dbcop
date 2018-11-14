@@ -1,13 +1,63 @@
-version:        "3.7"
+version:            "3.7"
 services:
-  parent:
-    image:      galera:arch
-    command:    ["--wsrep-node-name=dbcop-test", "--wsrep-cluster-address=gcomm://"]
-    hostname:   parent
-  child:
-    image:      galera:arch
+  galera1:
+    image:          galera:arch
+    hostname:       galera1
+    container_name: galera1
+    command:        
+      - --wsrep-node-name=dbcop-test
+      - --wsrep-cluster-address=gcomm://
+  galera2:
+    image:          galera:arch
+    hostname:       galera2
+    container_name: galera2
+    command:        
+      - --wsrep-node-name=dbcop-test
+      - --wsrep-cluster-address=gcomm://galera1
     depends_on:
-      - parent
-    command:    ["--wsrep-node-name=dbcop-test", "--wsrep-cluster-address=gcomm://parent"]
-    deploy:
-      replicas: 4
+      - galera1
+  galera3:
+    image:          galera:arch
+    hostname:       galera3
+    container_name: galera3
+    command:        
+      - --wsrep-node-name=dbcop-test
+      - --wsrep-cluster-address=gcomm://galera1
+    depends_on:
+      - galera1
+  galera4:
+    image:          galera:arch
+    hostname:       galera4
+    container_name: galera4
+    command:        
+      - --wsrep-node-name=dbcop-test
+      - --wsrep-cluster-address=gcomm://galera1
+    depends_on:
+      - galera1
+  galera5:
+    image:          galera:arch
+    hostname:       galera5
+    container_name: galera5
+    command:        
+      - --wsrep-node-name=dbcop-test
+      - --wsrep-cluster-address=gcomm://galera1
+    depends_on:
+      - galera1
+  galera6:
+    image:          galera:arch
+    hostname:       galera6
+    container_name: galera6
+    command:        
+      - --wsrep-node-name=dbcop-test
+      - --wsrep-cluster-address=gcomm://galera1
+    depends_on:
+      - galera1
+  galera7:
+    image:          galera:arch
+    hostname:       galera7
+    container_name: galera7
+    command:        
+      - --wsrep-node-name=dbcop-test
+      - --wsrep-cluster-address=gcomm://galera1
+    depends_on:
+      - galera1

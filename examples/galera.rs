@@ -7,6 +7,8 @@ use std::path::Path;
 use dbcop::db::cluster::{Cluster, ClusterNode, Node};
 use dbcop::db::history::{HistParams, Transaction};
 
+use std::fs;
+
 use clap::{App, Arg};
 
 #[derive(Debug)]
@@ -109,7 +111,7 @@ impl GaleraCluster {
                     ).unwrap();
                     // conn.query("USE dbcop").unwrap();
                     Ok(true)
-                }).is_ok(),
+                }).expect("problem creating database"),
             _ => false,
         }
     }
@@ -199,11 +201,11 @@ fn main() {
     let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
     let hist_out = Path::new(matches.value_of("hist_out").unwrap());
 
+    fs::create_dir_all(hist_out).expect("couldn't create directory");
+
     let ips: Vec<_> = matches.values_of("ips").unwrap().collect();
 
     let mut cluster = GaleraCluster::new(&ips);
 
-    cluster.setup();
-
-    cluster.execute_all(hist_dir, hist_out);
+    cluster.execute_all(hist_dir, hist_out, 500);
 }

@@ -201,11 +201,11 @@ fn main() {
     let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
     let hist_out = Path::new(matches.value_of("hist_out").unwrap());
 
+    fs::create_dir_all(hist_out).expect("couldn't create directory");
+
     let ips: Vec<_> = matches.values_of("ips").unwrap().collect();
 
     let mut cluster = CockroachCluster::new(&ips);
 
-    cluster.setup();
-
-    cluster.execute_all(hist_dir, hist_out);
+    cluster.execute_all(hist_dir, hist_out, 500);
 }

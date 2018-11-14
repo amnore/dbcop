@@ -13,6 +13,8 @@ use std::net::IpAddr;
 // use rand::distributions::{Distribution, Uniform};
 // use rand::Rng;
 use std::thread;
+use std::thread::sleep;
+use std::time::Duration;
 
 // use std::convert::From;
 
@@ -50,16 +52,26 @@ where
             .collect()
     }
 
-    fn execute_all(&mut self, r_dir: &Path, o_dir: &Path) -> Option<usize> {
-        let histories: Vec<History> = fs::read_dir(r_dir)
-            .unwrap()
-            .filter_map(|entry_res| match entry_res {
-                Ok(ref entry) if !&entry.path().is_dir() => {
-                    let file = File::open(entry.path()).unwrap();
-                    let buf_reader = BufReader::new(file);
-                    Some(serde_json::from_reader(buf_reader).unwrap())
-                }
-                _ => None,
+    fn execute_all(&mut self, r_dir: &Path, o_dir: &Path, millisec: u64) -> Option<usize> {
+        // let histories: Vec<History> = fs::read_dir(r_dir)
+        //     .unwrap()
+        //     .take(100)
+        //     .filter_map(|entry_res| match entry_res {
+        //         Ok(ref entry) if !&entry.path().is_dir() => {
+        //             let file = File::open(entry.path()).unwrap();
+        //             let buf_reader = BufReader::new(file);
+        //             Some(serde_json::from_reader(buf_reader).unwrap())
+        //         }
+        //         _ => None,
+        //     })
+        //     .collect();
+
+        let histories: Vec<History> = (0..100)
+            .flat_map(|id| {
+                let filename = format!("hist-{:05}.json", id);
+                let file = File::open(r_dir.join(filename)).unwrap();
+                let buf_reader = BufReader::new(file);
+                serde_json::from_reader(buf_reader)
             })
             .collect();
 
@@ -67,12 +79,15 @@ where
             let curr_dir = o_dir.join(format!("hist-{:05}", history.get_id()));
             fs::create_dir(&curr_dir).expect("couldn't create dir");
             self.execute(history, &curr_dir);
+            sleep(Duration::from_millis(millisec));
         }
 
         None
     }
 
     fn execute(&mut self, hist: &History, dir: &Path) -> Option<usize> {
+        self.setup();
+
         self.setup_test(hist.get_params());
 
         let mut exec = hist.get_cloned_data();
@@ -82,6 +97,8 @@ where
         self.exec_history(&mut exec);
 
         let end_time = chrono::Local::now();
+
+        self.cleanup();
 
         let exec_hist = History::new(
             hist.get_cloned_params(),
@@ -95,7 +112,6 @@ where
         let buf_writer = BufWriter::new(file);
         serde_json::to_writer_pretty(buf_writer, &exec_hist).expect("dumping to json went wrong");
 
-        self.cleanup();
         None
     }
 
