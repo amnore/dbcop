@@ -4,6 +4,23 @@ version = "0.1.0"
 authors = ["Ranadeep Biswas <ranadip.bswas@gmail.com>"]
 
 [dependencies]
-mysql = "12.3.1"
-clap = "2.31.2"
-rand = "0.4"
+mysql = "*"
+postgres = "*"
+rand = "*"
+clap = "*"
+ansi_term = "*"
+serde = "*"
+serde_derive = "*"
+serde_json = "*"
+serde_yaml = "*"
+byteorder = "*"
+petgraph = "*"
+rayon = "*"
+slog = "*"
+slog-term = "*"
+slog-json = "*"
+chrono = { version = "*", features = ["serde"] }
+antidotedb = { path = "../antidotedb" }
+
+[profile.release]
+opt-level = 3
