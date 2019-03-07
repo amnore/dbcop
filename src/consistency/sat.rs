@@ -1,6 +1,8 @@
 use hashbrown::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
 
+use std::default::Default;
+
 use std::process::{Command, Stdio};
 
 use std::path::PathBuf;
@@ -17,26 +19,29 @@ pub enum Edge {
     WW(usize),
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct CNF {
-    cnf_string: Vec<u8>,
-    n_clause: usize,
+    clauses: Vec<Vec<(bool, usize)>>,
     n_variable: usize,
+}
+
+impl Default for CNF {
+    fn default() -> Self {
+        CNF {
+            clauses: vec![Vec::new()],
+            n_variable: 0,
+        }
+    }
 }
 
 impl CNF {
     fn add_variable(&mut self, var: usize, sign: bool) {
         self.n_variable = std::cmp::max(self.n_variable, var);
-        if sign {
-            write!(self.cnf_string, "{} ", var).expect("cnf write failed");
-        } else {
-            write!(self.cnf_string, "-{} ", var).expect("cnf write failed");
-        }
+        self.clauses.last_mut().unwrap().push((sign, var));
     }
 
     fn finish_clause(&mut self) {
-        writeln!(self.cnf_string, " 0").expect("cnf write failed");
-        self.n_clause += 1;
+        self.clauses.push(Vec::new());
     }
 
     fn write_to_file(&self, path: &PathBuf) {
@@ -47,10 +52,18 @@ impl CNF {
             .open(path)
             .expect("couldn't create");
 
-        writeln!(file, "p cnf {} {}", self.n_variable, self.n_clause)
+        writeln!(file, "p cnf {} {}", self.n_variable, self.clauses.len())
             .expect("failed to write parameters");
-        file.write_all(&self.cnf_string)
-            .expect("failed to write clauses");
+        for clause in self.clauses.iter().rev().skip(1) {
+            for (sign, literal) in clause {
+                if *sign {
+                    write!(file, "{} ", literal).expect("failed to write cnf to file");
+                } else {
+                    write!(file, "-{} ", literal).expect("failed to write cnf to file");
+                }
+            }
+            writeln!(file, "0").expect("failed to write cnf to file");
+        }
     }
 }
 
