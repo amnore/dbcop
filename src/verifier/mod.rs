@@ -395,12 +395,15 @@ impl Verifier {
 
             sat_solver.pre_vis_co();
             sat_solver.session();
-            sat_solver.wr_ww_rw();
+            sat_solver.wr_ww();
             sat_solver.read_atomic();
 
             match self.consistency_model {
                 Consistency::Causal => {
                     sat_solver.vis_transitive();
+                }
+                Consistency::Prefix => {
+                    sat_solver.prefix();
                 }
                 Consistency::SnapshotIsolation => {
                     sat_solver.prefix();

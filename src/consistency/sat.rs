@@ -14,9 +14,7 @@ use std::io::Write;
 pub enum Edge {
     CO,
     VI,
-    // WR(usize),
     WW(usize),
-    RW(usize),
 }
 
 #[derive(Default, Debug)]
@@ -191,7 +189,7 @@ impl Sat {
         self.add_clauses(&clauses);
     }
 
-    pub fn wr_ww_rw(&mut self) {
+    pub fn wr_ww(&mut self) {
         let mut clauses = Vec::new();
 
         for (&x, ref wr_map) in self.write_variable.iter() {
@@ -207,16 +205,6 @@ impl Sat {
                             (Edge::WW(x), u1, u2, true),
                             (Edge::WW(x), u2, u1, true),
                         ]);
-                        for &v in vs.iter() {
-                            clauses.push(vec![
-                                (Edge::WW(x), u1, u2, false),
-                                (Edge::RW(x), v, u2, true),
-                            ]);
-                            clauses.push(vec![
-                                (Edge::WW(x), u1, u2, true),
-                                (Edge::RW(x), v, u2, false),
-                            ]);
-                        }
                     }
                 }
             }
@@ -234,7 +222,7 @@ impl Sat {
                     for (&u1, _) in wr_map.iter() {
                         if u1 != u {
                             clauses
-                                .push(vec![(Edge::RW(x), v, u1, false), (Edge::VI, u1, v, false)]);
+                                .push(vec![(Edge::VI, u1, v, false), (Edge::WW(x), u1, u, true)]);
                         }
                     }
                 }
