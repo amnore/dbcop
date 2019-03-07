@@ -4,8 +4,6 @@ version = "0.1.0"
 authors = ["Ranadeep Biswas <ranadip.bswas@gmail.com>"]
 
 [dependencies]
-mysql = "*"
-postgres = "*"
 rand = "*"
 clap = "*"
 ansi_term = "*"
@@ -20,7 +18,15 @@ slog = "*"
 slog-term = "*"
 slog-json = "*"
 chrono = { version = "*", features = ["serde"] }
-antidotedb = { path = "../antidotedb" }
+bincode = "*"
+hashbrown = "*"
+
+[dev-dependencies]
+nom = "*"
+mysql = "*"
+postgres = "*"
+mongodb = "*"
+antidotedb = { git = "https://github.com/rnbguy/antidotedb_rs" }
 
 [profile.release]
 opt-level = 3
