@@ -1,6 +1,6 @@
 use std::fmt;
 
-use std::collections::HashMap;
+use hashbrown::HashMap;
 
 use rand::distributions::{Distribution, Uniform};
 use rand::Rng;
@@ -22,6 +22,8 @@ pub struct Transaction {
     pub events: Vec<Event>,
     pub success: bool,
 }
+
+pub type Session = Vec<Transaction>;
 
 impl fmt::Debug for Event {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -80,6 +82,9 @@ impl HistParams {
     pub fn get_id(&self) -> usize {
         self.id
     }
+    pub fn set_id(&mut self, id: usize) {
+        self.id = id;
+    }
     pub fn get_n_node(&self) -> usize {
         self.n_node
     }
@@ -100,7 +105,7 @@ pub struct History {
     info: String,
     start: DateTime<Local>,
     end: DateTime<Local>,
-    data: Vec<Vec<Transaction>>,
+    data: Vec<Session>,
 }
 
 impl History {
@@ -109,7 +114,7 @@ impl History {
         info: String,
         start: DateTime<Local>,
         end: DateTime<Local>,
-        data: Vec<Vec<Transaction>>,
+        data: Vec<Session>,
     ) -> Self {
         History {
             params,
@@ -124,11 +129,11 @@ impl History {
         self.params.get_id()
     }
 
-    pub fn get_data(&self) -> &Vec<Vec<Transaction>> {
+    pub fn get_data(&self) -> &Vec<Session> {
         &self.data
     }
 
-    pub fn get_cloned_data(&self) -> Vec<Vec<Transaction>> {
+    pub fn get_cloned_data(&self) -> Vec<Session> {
         self.data.clone()
     }
 
@@ -146,18 +151,18 @@ pub fn generate_single_history(
     n_variable: usize,
     n_transaction: usize,
     n_event: usize,
-) -> Vec<Vec<Transaction>> {
+) -> Vec<Session> {
     let mut counters = HashMap::new();
     let mut random_generator = rand::thread_rng();
     let variable_range = Uniform::from(0..n_variable);
-    let hist = (0..n_node)
+    (0..n_node)
         .map(|_| {
             (0..n_transaction)
                 .map(|_| Transaction {
                     events: (0..n_event)
                         .map(|_| {
                             let variable = variable_range.sample(&mut random_generator);
-                            let event = if random_generator.gen() {
+                            if random_generator.gen() {
                                 Event::read(variable)
                             } else {
                                 let value = {
@@ -166,17 +171,14 @@ pub fn generate_single_history(
                                     *entry
                                 };
                                 Event::write(variable, value)
-                            };
-                            event
+                            }
                         })
                         .collect(),
                     success: false,
                 })
                 .collect::<Vec<_>>()
         })
-        .collect::<Vec<_>>();
-
-    hist
+        .collect::<Vec<_>>()
 }
 
 pub fn generate_mult_histories(

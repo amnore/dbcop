@@ -1,5 +1,13 @@
-pub mod causal;
 pub mod sat;
-pub mod ser;
-pub mod si;
+pub mod algo;
 pub mod util;
+
+#[derive(Debug)]
+pub enum Consistency {
+    RepeatableRead,
+    ReadCommitted,
+    Causal,
+    Prefix,
+    SnapshotIsolation,
+    Serializable,
+}

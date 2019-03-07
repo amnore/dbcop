@@ -1,3 +1,4 @@
+extern crate bincode;
 extern crate chrono;
 extern crate clap;
 extern crate dbcop;
@@ -134,31 +135,27 @@ fn main() {
             );
 
             for hist in histories.drain(..) {
-                let mut file =
-                    File::create(dir.join(format!("hist-{:05}.json", hist.get_id()))).unwrap();
+                let mut file = File::create(dir.join(format!("hist-{:05}.bincode", hist.get_id())))
+                    .expect("couldn't create bincode file");
                 let mut buf_writer = BufWriter::new(file);
-                serde_json::to_writer_pretty(buf_writer, &hist)
-                    .expect("dumping history to json file went wrong");
+                bincode::serialize_into(buf_writer, &hist)
+                    .expect("dumping history to bincode file went wrong");
             }
         }
         ("verify", Some(matches)) => {
             let v_dir = Path::new(matches.value_of("v_directory").unwrap());
 
-            if !v_dir.is_dir() {}
-
             let histories: Vec<History> = fs::read_dir(v_dir)
-                .unwrap()
+                .expect("couldn't read history directory")
                 .filter_map(|entry_res| match entry_res {
                     Ok(ref entry) if entry.path().is_dir() => {
-                        let file = File::open(entry.path().join("history.json")).unwrap();
+                        let file = File::open(entry.path().join("history.bincode")).unwrap();
                         let buf_reader = BufReader::new(file);
-                        Some(serde_json::from_reader(buf_reader).unwrap())
+                        Some(bincode::deserialize_from(buf_reader).unwrap())
                     }
                     _ => None,
                 })
                 .collect();
-
-            // println!("{:?}", histories);
 
             let o_dir = Path::new(matches.value_of("o_directory").unwrap());
 

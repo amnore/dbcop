@@ -4,6 +4,7 @@ extern crate rand;
 extern crate chrono;
 extern crate rayon;
 
+extern crate hashbrown;
 extern crate petgraph;
 
 pub mod consistency;
@@ -19,5 +20,5 @@ extern crate serde_derive;
 
 #[macro_use]
 extern crate slog;
-extern crate slog_term;
 extern crate slog_json;
+extern crate slog_term;

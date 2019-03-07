@@ -1,14 +1,15 @@
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
-use consistency::causal::Causal;
 use consistency::sat::Sat;
-use consistency::ser::Chains;
-use consistency::si::SIChains;
-use db::history::Transaction;
+use consistency::Consistency;
+use db::history::Session;
+
+use consistency::algo::{AtomicHistoryPO, SerializableHistory, SnapshotIsolationHistory};
+use consistency::util::ConstrainedLinearization;
 
 mod util;
 
@@ -18,7 +19,7 @@ use slog::{Drain, Logger};
 
 pub struct Verifier {
     log: slog::Logger,
-    consistency_model: String,
+    consistency_model: Consistency,
     use_sat: bool,
     use_bicomponent: bool,
     dir: PathBuf,
@@ -31,7 +32,7 @@ impl Verifier {
 
         Verifier {
             log: Self::get_logger(BufWriter::new(log_file)),
-            consistency_model: "ser".to_string(),
+            consistency_model: Consistency::Serializable,
             use_sat: false,
             use_bicomponent: false,
             dir,
@@ -39,7 +40,15 @@ impl Verifier {
     }
 
     pub fn model(&mut self, model: &str) {
-        self.consistency_model = model.to_string();
+        self.consistency_model = match model {
+            "rc" => Consistency::ReadCommitted,
+            "rr" => Consistency::RepeatableRead,
+            "cc" => Consistency::Causal,
+            "pre" => Consistency::Prefix,
+            "si" => Consistency::SnapshotIsolation,
+            "ser" => Consistency::Serializable,
+            _ => unreachable!(),
+        }
     }
 
     pub fn sat(&mut self, flag: bool) {
@@ -67,24 +76,25 @@ impl Verifier {
         root_logger
     }
 
-    pub fn gen_write_map(
-        &self,
-        histories: &Vec<Vec<Transaction>>,
-    ) -> HashMap<(usize, usize), (usize, usize, usize)> {
+    pub fn gen_write_map(histories: &[Session]) -> HashMap<(usize, usize), (usize, usize, usize)> {
         let mut write_map = HashMap::new();
 
         for (i_node, session) in histories.iter().enumerate() {
             for (i_transaction, transaction) in session.iter().enumerate() {
                 for (i_event, event) in transaction.events.iter().enumerate() {
                     if event.write {
-                        if let Some(_) = write_map.insert(
-                            (event.variable, event.value),
-                            (i_node + 1, i_transaction, i_event),
-                        ) {
-                            unreachable!();
+                        if write_map
+                            .insert(
+                                (event.variable, event.value),
+                                (i_node + 1, i_transaction, i_event),
+                            )
+                            .is_some()
+                        {
+                            panic!("each write should be unique");
                         }
+                    } else {
+                        write_map.entry((event.variable, 0)).or_insert((0, 0, 0));
                     }
-                    write_map.entry((event.variable, 0)).or_insert((0, 0, 0));
                 }
             }
         }
@@ -92,8 +102,8 @@ impl Verifier {
         write_map
     }
 
-    pub fn transactional_history_verify(&self, histories: &Vec<Vec<Transaction>>) -> bool {
-        let write_map = self.gen_write_map(histories);
+    pub fn transactional_history_verify(&self, histories: &[Session]) -> bool {
+        let write_map = Self::gen_write_map(histories);
 
         for (i_node_r, session) in histories.iter().enumerate() {
             for (i_transaction_r, transaction) in session.iter().enumerate() {
@@ -180,16 +190,6 @@ impl Verifier {
                                         info!(self.log, "finished early"; "reason" => "LOST UPDATE", "description" => "did not read the latest write within transaction");
                                         return false;
                                     }
-                                // assert!(
-                                //     (i_node + 1 == wr_i_node) && (i_transaction == wr_i_transaction) && (*pos == wr_i_event),
-                                //     "update-lost!! event-{} of txn({},{}) read value from ({},{},{}) instead from the txn.",
-                                //     i_event,
-                                //     i_node + 1,
-                                //     i_transaction,
-                                //     wr_i_node,
-                                //     wr_i_transaction,
-                                //     wr_i_event
-                                // );
                                 } else {
                                     if event.value != 0 {
                                         // checking if read the last write from other transaction
@@ -203,21 +203,6 @@ impl Verifier {
                                             info!(self.log, "finished early"; "reason" => "UNCOMMITTED READ", "description" => "read some non-last write from other transaction");
                                             return false;
                                         }
-                                        // assert_eq!(
-                                        //     *transaction_last_writes
-                                        //         .get(&(wr_i_node, wr_i_transaction))
-                                        //         .unwrap()
-                                        //         .get(&event.variable)
-                                        //         .unwrap(),
-                                        //     wr_i_event,
-                                        //     "non-committed read!! action-{} of txn({},{}) read value from ({},{},{}) instead from the txn.",
-                                        //     i_event,self.log,
-                                        //     i_node + 1,
-                                        //     i_transaction,
-                                        //     wr_i_node,
-                                        //     wr_i_transaction,
-                                        //     wr_i_event
-                                        // );
                                     }
 
                                     if let Some((wr_i_node2, wr_i_transaction2, wr_i_event2)) =
@@ -231,16 +216,6 @@ impl Verifier {
                                             info!(self.log, "finished early"; "reason" => "NON REPEATABLE READ", "description" => "did not read same as latest read which is after lastest write");
                                             return false;
                                         }
-                                        // assert!(
-                                        //     (*wr_i_node2 == wr_i_node) && (*wr_i_transaction2 == wr_i_transaction) && (*wr_i_event2 == wr_i_event),
-                                        //     "non-repeatable read!! action-{} of txn({},{}) read value from ({},{},{}) instead as the last read.",
-                                        //     i_event,
-                                        //     i_node + 1,
-                                        //     i_transaction,
-                                        //     wr_i_node,
-                                        //     wr_i_transaction,
-                                        //     wr_i_event,
-                                        // )
                                     }
                                 }
                                 reads.insert(
@@ -255,9 +230,12 @@ impl Verifier {
         }
 
         info!(self.log, "each read from latest write");
+        info!(self.log, "atomic reads");
 
         let n_sizes: Vec<_> = histories.iter().map(|ref v| v.len()).collect();
         let mut transaction_infos = HashMap::new();
+
+        let mut root_write_info = HashSet::new();
 
         for (i_node, session) in histories.iter().enumerate() {
             for (i_transaction, transaction) in session.iter().enumerate() {
@@ -271,6 +249,11 @@ impl Verifier {
                             } else {
                                 let &(wr_i_node, wr_i_transaction, _) =
                                     write_map.get(&(event.variable, event.value)).unwrap();
+                                if event.value == 0 {
+                                    assert_eq!(wr_i_node, 0);
+                                    assert_eq!(wr_i_transaction, 0);
+                                    root_write_info.insert(event.variable);
+                                }
                                 if wr_i_node != i_node + 1 || wr_i_transaction != i_transaction {
                                     if let Some((old_i_node, old_i_transaction)) = read_info
                                         .insert(event.variable, (wr_i_node, wr_i_transaction))
@@ -287,6 +270,10 @@ impl Verifier {
                 transaction_infos.insert((i_node + 1, i_transaction), (read_info, write_info));
             }
         }
+
+        assert!(transaction_infos
+            .insert((0, 0), (Default::default(), root_write_info))
+            .is_none());
 
         if self.use_sat {
             info!(self.log, "using SAT");
@@ -366,10 +353,10 @@ impl Verifier {
             self.log,
             #"information",
             "the algorithm finished";
-                "model" => &self.consistency_model,
+                "model" => format!("{:?}", self.consistency_model),
                 "sat" => self.use_sat,
                 "bicomponent" => self.use_bicomponent,
-                "duration" => duration.as_secs() as f64 + duration.subsec_nanos() as f64 * 1e-9,
+                "duration" => duration.as_secs() as f64 + f64::from(duration.subsec_nanos()) * 1e-9,
                 "result" => decision
         );
 
@@ -401,7 +388,7 @@ impl Verifier {
             (usize, usize),
             (HashMap<usize, (usize, usize)>, HashSet<usize>),
         >,
-        n_sizes: &Vec<usize>,
+        n_sizes: &[usize],
     ) -> bool {
         if self.use_sat {
             let mut sat_solver = Sat::new(n_sizes, &transaction_infos);
@@ -411,15 +398,15 @@ impl Verifier {
             sat_solver.wr_ww_rw();
             sat_solver.read_atomic();
 
-            match self.consistency_model.as_ref() {
-                "cc" => {
+            match self.consistency_model {
+                Consistency::Causal => {
                     sat_solver.vis_transitive();
                 }
-                "si" => {
+                Consistency::SnapshotIsolation => {
                     sat_solver.prefix();
                     sat_solver.conflict();
                 }
-                "ser" => {
+                Consistency::Serializable => {
                     sat_solver.ser();
                 }
                 _ => unreachable!(),
@@ -429,26 +416,64 @@ impl Verifier {
         } else {
             info!(self.log, "using our algorithms");
 
-            match self.consistency_model.as_ref() {
-                "cc" => {
-                    let mut causal = Causal::new(&n_sizes, &transaction_infos, self.log.clone());
-                    causal.preprocess_vis() && causal.preprocess_co()
-                }
-                "si" => {
-                    let mut chains = SIChains::new(&n_sizes, &transaction_infos, self.log.clone());
-                    info!(self.log, "{:?}", chains);
-                    if !chains.preprocess() {
-                        info!(self.log, "found cycle while processing wr and po order");
+            match self.consistency_model {
+                Consistency::Causal => {
+                    let mut causal_hist = AtomicHistoryPO::new(&n_sizes, transaction_infos.clone());
+
+                    let wr = causal_hist.get_wr();
+                    causal_hist.vis_includes(&wr);
+                    causal_hist.vis_is_trans();
+                    let ww = causal_hist.causal_ww();
+                    for (_, ww_x) in ww.iter() {
+                        causal_hist.vis_includes(ww_x);
                     }
-                    chains.serializable_order_dfs().is_some()
+                    causal_hist.vis_is_trans();
+
+                    !causal_hist.vis.has_cycle()
                 }
-                "ser" => {
-                    let mut chains = Chains::new(&n_sizes, &transaction_infos, self.log.clone());
-                    info!(self.log, "{:?}", chains);
-                    if !chains.preprocess() {
-                        info!(self.log, "found cycle while processing wr and po order");
+                Consistency::SnapshotIsolation => {
+                    let mut si_hist = SnapshotIsolationHistory::new(
+                        &n_sizes,
+                        transaction_infos.clone(),
+                        self.log.clone(),
+                    );
+
+                    let wr = si_hist.history.get_wr();
+                    si_hist.history.vis_includes(&wr);
+                    si_hist.history.vis_is_trans();
+                    let ww = si_hist.history.causal_ww();
+                    for (_, ww_x) in ww.iter() {
+                        si_hist.history.vis_includes(ww_x);
                     }
-                    chains.serializable_order_dfs().is_some()
+                    si_hist.history.vis_is_trans();
+
+                    if si_hist.history.vis.has_cycle() {
+                        false
+                    } else {
+                        si_hist.get_linearization().is_some()
+                    }
+                }
+                Consistency::Serializable => {
+                    let mut ser_hist = SerializableHistory::new(
+                        &n_sizes,
+                        transaction_infos.clone(),
+                        self.log.clone(),
+                    );
+
+                    let wr = ser_hist.history.get_wr();
+                    ser_hist.history.vis_includes(&wr);
+                    ser_hist.history.vis_is_trans();
+                    let ww = ser_hist.history.causal_ww();
+                    for (_, ww_x) in ww.iter() {
+                        ser_hist.history.vis_includes(ww_x);
+                    }
+                    ser_hist.history.vis_is_trans();
+
+                    if ser_hist.history.vis.has_cycle() {
+                        false
+                    } else {
+                        ser_hist.get_linearization().is_some()
+                    }
                 }
                 _ => unreachable!(),
             }

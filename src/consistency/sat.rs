@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use hashbrown::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
 
 use std::process::{Command, Stdio};
@@ -37,7 +37,7 @@ impl CNF {
     }
 
     fn finish_clause(&mut self) {
-        write!(self.cnf_string, " 0\n").expect("cnf write failed");
+        writeln!(self.cnf_string, " 0").expect("cnf write failed");
         self.n_clause += 1;
     }
 
@@ -49,7 +49,7 @@ impl CNF {
             .open(path)
             .expect("couldn't create");
 
-        write!(file, "p cnf {} {}\n", self.n_variable, self.n_clause)
+        writeln!(file, "p cnf {} {}", self.n_variable, self.n_clause)
             .expect("failed to write parameters");
         file.write_all(&self.cnf_string)
             .expect("failed to write clauses");
@@ -67,13 +67,11 @@ pub struct Sat {
 
 impl Sat {
     pub fn new(
-        n_sizes: &Vec<usize>,
+        n_sizes: &[usize],
         txns_info: &HashMap<(usize, usize), (HashMap<usize, (usize, usize)>, HashSet<usize>)>,
     ) -> Self {
-        let mut write_variable: HashMap<
-            usize,
-            HashMap<(usize, usize), HashSet<(usize, usize)>>,
-        > = HashMap::new();
+        let mut write_variable: HashMap<usize, HashMap<(usize, usize), HashSet<(usize, usize)>>> =
+            HashMap::new();
 
         for (&transaction1, (ref read_info, write_info)) in txns_info.iter() {
             for &x in write_info.iter() {
@@ -102,9 +100,9 @@ impl Sat {
         Sat {
             cnf: Default::default(),
             edge_variable: HashMap::new(),
-            write_variable: write_variable,
-            n_sizes: n_sizes.clone(),
-            transactions: transactions,
+            write_variable,
+            n_sizes: n_sizes.to_owned(),
+            transactions,
         }
     }
 
@@ -342,9 +340,11 @@ impl Sat {
 
             edges.sort_unstable();
 
-            // for e in &edges {
-            //     println!("{:?}", e);
-            // }
+            for e in &edges {
+                if e.0 == Edge::CO {
+                    println!("{:?}", e);
+                }
+            }
 
             true
         } else {
@@ -352,40 +352,22 @@ impl Sat {
         }
     }
 
-    pub fn add_clause(&mut self, edges: &Vec<(Edge, (usize, usize), (usize, usize), bool)>) {
+    pub fn add_clause(&mut self, edges: &[(Edge, (usize, usize), (usize, usize), bool)]) {
         for edge in edges.iter() {
-            let (variable, flip) = self.get_variable(edge.0, edge.1, edge.2);
-            self.cnf.add_variable(variable, edge.3 ^ flip);
+            let variable = self.get_variable(edge.0, edge.1, edge.2);
+            self.cnf.add_variable(variable, edge.3);
         }
         self.cnf.finish_clause();
     }
 
-    pub fn add_clauses(
-        &mut self,
-        clauses: &Vec<Vec<(Edge, (usize, usize), (usize, usize), bool)>>,
-    ) {
+    pub fn add_clauses(&mut self, clauses: &[Vec<(Edge, (usize, usize), (usize, usize), bool)>]) {
         for clause in clauses.iter() {
             self.add_clause(clause);
         }
     }
 
-    pub fn get_variable(
-        &mut self,
-        edge: Edge,
-        u: (usize, usize),
-        v: (usize, usize),
-    ) -> (usize, bool) {
+    pub fn get_variable(&mut self, edge: Edge, u: (usize, usize), v: (usize, usize)) -> usize {
         let usable = self.edge_variable.len() + 1;
-        let entry = self
-            .edge_variable
-            .entry(match edge {
-                Edge::CO if u > v => (edge, v, u),
-                _ => (edge, u, v),
-            })
-            .or_insert(usable);
-        match edge {
-            Edge::CO if u > v => (*entry, false),
-            _ => (*entry, true),
-        }
+        *self.edge_variable.entry((edge, u, v)).or_insert(usable)
     }
 }
