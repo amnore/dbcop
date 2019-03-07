@@ -1,5 +1,5 @@
-pub mod sat;
 pub mod algo;
+pub mod sat;
 pub mod util;
 
 #[derive(Debug)]

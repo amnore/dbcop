@@ -28,8 +28,8 @@ impl AtomicHistoryPO {
             let v: Vec<_> = n_sizes
                 .iter()
                 .enumerate()
-                .filter_map(|(node_i, node_len)| {
-                    if node_len > &0 {
+                .filter_map(|(node_i, &node_len)| {
+                    if node_len > 0 {
                         Some((node_i + 1, 0))
                     } else {
                         None
@@ -172,7 +172,7 @@ impl ConstrainedLinearization for PrefixConsistentHistory {
                     .or_insert_with(Default::default)
                     .remove(&curr_txn.0));
             }
-            self.active_write.retain(|_, ts| ts.len() > 0);
+            self.active_write.retain(|_, ts| !ts.is_empty());
         }
     }
 
@@ -288,7 +288,7 @@ impl ConstrainedLinearization for SnapshotIsolationHistory {
                     .entry(x)
                     .or_insert_with(Default::default)
                     .remove(&curr_txn.0));
-                self.active_write.retain(|_, ts| ts.len() > 0);
+                self.active_write.retain(|_, ts| !ts.is_empty());
             }
 
             self.active_variable = self
@@ -392,7 +392,7 @@ impl ConstrainedLinearization for SerializableHistory {
                 .or_insert_with(Default::default)
                 .remove(curr_txn));
         }
-        self.active_write.retain(|_, ts| ts.len() > 0);
+        self.active_write.retain(|_, ts| !ts.is_empty());
         for &x in curr_txn_info.1.iter() {
             let read_by = self
                 .history
