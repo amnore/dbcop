@@ -8,7 +8,7 @@ use std::process::{Command, Stdio};
 use std::path::PathBuf;
 
 use std::io::BufRead;
-use std::io::BufReader;
+use std::io::{BufReader, BufWriter};
 
 use std::io::Write;
 
@@ -44,12 +44,14 @@ impl CNF {
     }
 
     fn write_to_file(&self, path: &PathBuf) {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)
-            .expect("couldn't create");
+        let mut file = BufWriter::new(
+            OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(path)
+                .expect("couldn't create"),
+        );
 
         writeln!(file, "p cnf {} {}", self.n_variable, self.clauses.len() - 1)
             .expect("failed to write parameters");
