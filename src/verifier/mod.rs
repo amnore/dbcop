@@ -232,7 +232,6 @@ impl Verifier {
         info!(self.log, "each read from latest write");
         info!(self.log, "atomic reads");
 
-        let n_sizes: Vec<_> = histories.iter().map(|ref v| v.len()).collect();
         let mut transaction_infos = HashMap::new();
 
         let mut root_write_info = HashSet::new();
@@ -329,22 +328,11 @@ impl Verifier {
             biconnected_components.iter().all(|component| {
                 info!(self.log, "doing for component {:?}", component);
                 let restrict_infos = self.restrict(&transaction_infos, component);
-                let restrict_n_sizes: Vec<_> = n_sizes
-                    .iter()
-                    .enumerate()
-                    .map(|(i, &size)| {
-                        if component.contains(&(i + 1)) {
-                            size
-                        } else {
-                            0
-                        }
-                    })
-                    .collect();
 
-                self.do_hard_verification(&restrict_infos, &restrict_n_sizes)
+                self.do_hard_verification(&restrict_infos)
             })
         } else {
-            self.do_hard_verification(&transaction_infos, &n_sizes)
+            self.do_hard_verification(&transaction_infos)
         };
 
         let duration = moment.elapsed();
@@ -388,10 +376,9 @@ impl Verifier {
             (usize, usize),
             (HashMap<usize, (usize, usize)>, HashSet<usize>),
         >,
-        n_sizes: &[usize],
     ) -> bool {
         if self.use_sat {
-            let mut sat_solver = Sat::new(n_sizes, &transaction_infos);
+            let mut sat_solver = Sat::new(&transaction_infos);
 
             sat_solver.pre_vis_co();
             sat_solver.session();
@@ -421,7 +408,7 @@ impl Verifier {
 
             match self.consistency_model {
                 Consistency::Causal => {
-                    let mut causal_hist = AtomicHistoryPO::new(&n_sizes, transaction_infos.clone());
+                    let mut causal_hist = AtomicHistoryPO::new(transaction_infos.clone());
 
                     let wr = causal_hist.get_wr();
                     causal_hist.vis_includes(&wr);
@@ -436,7 +423,6 @@ impl Verifier {
                 }
                 Consistency::SnapshotIsolation => {
                     let mut si_hist = SnapshotIsolationHistory::new(
-                        &n_sizes,
                         transaction_infos.clone(),
                         self.log.clone(),
                     );
@@ -458,7 +444,6 @@ impl Verifier {
                 }
                 Consistency::Serializable => {
                     let mut ser_hist = SerializableHistory::new(
-                        &n_sizes,
                         transaction_infos.clone(),
                         self.log.clone(),
                     );

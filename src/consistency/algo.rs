@@ -18,32 +18,16 @@ pub struct AtomicHistoryPO {
 }
 
 impl AtomicHistoryPO {
-    pub fn new(
-        n_sizes: &[usize],
-        txns_info: HashMap<TransactionId, TransactionInfo>,
-    ) -> AtomicHistoryPO {
+    pub fn new(txns_info: HashMap<TransactionId, TransactionInfo>) -> AtomicHistoryPO {
         let root = (0, 0);
         let mut so: DiGraph<TransactionId> = Default::default();
-        {
-            let v: Vec<_> = n_sizes
-                .iter()
-                .enumerate()
-                .filter_map(|(node_i, &node_len)| {
-                    if node_len > 0 {
-                        Some((node_i + 1, 0))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            so.add_edges(root, &v);
-        }
 
         {
-            for (node_i, &node_len) in n_sizes.iter().enumerate() {
-                for transaction_i in 1..node_len {
-                    so.add_edge((node_i + 1, transaction_i - 1), (node_i + 1, transaction_i));
-                }
+            let mut transactions: Vec<_> = txns_info.keys().cloned().collect();
+            transactions.sort_unstable();
+
+            for ts in transactions.windows(2) {
+                so.add_edge(if ts[0].0 == ts[1].0 { ts[0] } else { (0, 0) }, ts[1])
             }
         }
 
@@ -123,13 +107,9 @@ pub struct PrefixConsistentHistory {
 }
 
 impl PrefixConsistentHistory {
-    pub fn new(
-        n_sizes: &[usize],
-        txns_info: HashMap<TransactionId, TransactionInfo>,
-        log: Logger,
-    ) -> Self {
+    pub fn new(txns_info: HashMap<TransactionId, TransactionInfo>, log: Logger) -> Self {
         Self {
-            history: AtomicHistoryPO::new(n_sizes, txns_info),
+            history: AtomicHistoryPO::new(txns_info),
             active_write: Default::default(),
             log,
         }
@@ -233,13 +213,9 @@ pub struct SnapshotIsolationHistory {
 }
 
 impl SnapshotIsolationHistory {
-    pub fn new(
-        n_sizes: &[usize],
-        txns_info: HashMap<TransactionId, TransactionInfo>,
-        log: Logger,
-    ) -> Self {
+    pub fn new(txns_info: HashMap<TransactionId, TransactionInfo>, log: Logger) -> Self {
         Self {
-            history: AtomicHistoryPO::new(n_sizes, txns_info),
+            history: AtomicHistoryPO::new(txns_info),
             active_write: Default::default(),
             active_variable: Default::default(),
             log,
@@ -368,13 +344,9 @@ pub struct SerializableHistory {
 }
 
 impl SerializableHistory {
-    pub fn new(
-        n_sizes: &[usize],
-        txns_info: HashMap<TransactionId, TransactionInfo>,
-        log: Logger,
-    ) -> Self {
+    pub fn new(txns_info: HashMap<TransactionId, TransactionInfo>, log: Logger) -> Self {
         Self {
-            history: AtomicHistoryPO::new(n_sizes, txns_info),
+            history: AtomicHistoryPO::new(txns_info),
             active_write: Default::default(),
             log,
         }

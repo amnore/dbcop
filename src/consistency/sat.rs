@@ -73,13 +73,11 @@ pub struct Sat {
     cnf: CNF,
     edge_variable: HashMap<(Edge, (usize, usize), (usize, usize)), usize>,
     write_variable: HashMap<usize, HashMap<(usize, usize), HashSet<(usize, usize)>>>,
-    n_sizes: Vec<usize>,
     transactions: Vec<(usize, usize)>,
 }
 
 impl Sat {
     pub fn new(
-        n_sizes: &[usize],
         txns_info: &HashMap<(usize, usize), (HashMap<usize, (usize, usize)>, HashSet<usize>)>,
     ) -> Self {
         let mut write_variable: HashMap<usize, HashMap<(usize, usize), HashSet<(usize, usize)>>> =
@@ -101,36 +99,27 @@ impl Sat {
             wr_map.entry((0, 0)).or_insert_with(Default::default);
         }
 
-        let mut transactions = vec![(0, 0)];
-
-        for (i_node, &n_transaction) in n_sizes.iter().enumerate() {
-            for i_transaction in 0..n_transaction {
-                transactions.push((i_node + 1, i_transaction));
-            }
-        }
+        let mut transactions: Vec<_> = txns_info.keys().cloned().collect();
+        transactions.sort_unstable();
 
         Sat {
             cnf: Default::default(),
             edge_variable: HashMap::new(),
             write_variable,
-            n_sizes: n_sizes.to_owned(),
             transactions,
         }
     }
 
     pub fn session(&mut self) {
         let mut clauses = Vec::new();
-        for (i_node, &n_transaction) in self.n_sizes.iter().enumerate() {
-            for i_transaction in 1..n_transaction {
-                // session orders
-                clauses.push(vec![(
-                    Edge::VI,
-                    (i_node + 1, i_transaction - 1),
-                    (i_node + 1, i_transaction),
-                    true,
-                )])
-            }
-            clauses.push(vec![(Edge::VI, (0, 0), (i_node + 1, 0), true)]);
+
+        for id in self.transactions.windows(2) {
+            clauses.push(vec![(
+                Edge::VI,
+                if id[0].0 == id[1].0 { id[0] } else { (0, 0) },
+                id[1],
+                true,
+            )])
         }
 
         self.add_clauses(&clauses);
