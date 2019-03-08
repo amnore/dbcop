@@ -52,7 +52,7 @@ impl CNF {
             .open(path)
             .expect("couldn't create");
 
-        writeln!(file, "p cnf {} {}", self.n_variable, self.clauses.len())
+        writeln!(file, "p cnf {} {}", self.n_variable, self.clauses.len() - 1)
             .expect("failed to write parameters");
         for clause in self.clauses.iter().rev().skip(1) {
             for (sign, literal) in clause {

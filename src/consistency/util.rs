@@ -31,6 +31,10 @@ where
         }
     }
 
+    pub fn add_vertex(&mut self, u: T) {
+        self.adj_map.entry(u).or_insert_with(HashSet::new);
+    }
+
     pub fn has_edge(&self, u: &T, v: &T) -> bool {
         match self.adj_map.get(u) {
             Some(vs) => vs.contains(v),

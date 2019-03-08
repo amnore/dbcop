@@ -53,11 +53,16 @@ impl AtomicHistoryPO {
 
         for (&txn_id, txn_info) in txns_info.iter() {
             for &var in txn_info.1.iter() {
-                wr_rel.entry(var).or_insert_with(Default::default);
+                wr_rel
+                    .entry(var)
+                    .or_insert_with(Default::default)
+                    .add_vertex(txn_id);
             }
             for (&var, &txn_id2) in txn_info.0.iter() {
-                let entry = wr_rel.entry(var).or_insert_with(Default::default);
-                entry.add_edge(txn_id2, txn_id);
+                wr_rel
+                    .entry(var)
+                    .or_insert_with(Default::default)
+                    .add_edge(txn_id2, txn_id);
             }
         }
 
@@ -172,8 +177,8 @@ impl ConstrainedLinearization for PrefixConsistentHistory {
                     .or_insert_with(Default::default)
                     .remove(&curr_txn.0));
             }
-            self.active_write.retain(|_, ts| !ts.is_empty());
         }
+        self.active_write.retain(|_, ts| !ts.is_empty());
     }
 
     fn backtrack_book_keeping(&mut self, linearization: &[Self::Vertex]) {
@@ -181,7 +186,7 @@ impl ConstrainedLinearization for PrefixConsistentHistory {
         let curr_txn_info = self.history.txns_info.get(&curr_txn.0).unwrap();
         if curr_txn.1 {
             for &x in curr_txn_info.1.iter() {
-                assert!(self.active_write.remove(&x).is_some());
+                self.active_write.remove(&x);
             }
         } else {
             for (&x, _) in curr_txn_info.0.iter() {
@@ -288,8 +293,8 @@ impl ConstrainedLinearization for SnapshotIsolationHistory {
                     .entry(x)
                     .or_insert_with(Default::default)
                     .remove(&curr_txn.0));
-                self.active_write.retain(|_, ts| !ts.is_empty());
             }
+            self.active_write.retain(|_, ts| !ts.is_empty());
 
             self.active_variable = self
                 .active_variable
@@ -304,7 +309,7 @@ impl ConstrainedLinearization for SnapshotIsolationHistory {
         let curr_txn_info = self.history.txns_info.get(&curr_txn.0).unwrap();
         if curr_txn.1 {
             for &x in curr_txn_info.1.iter() {
-                assert!(self.active_write.remove(&x).is_some());
+                self.active_write.remove(&x);
             }
             self.active_variable = self
                 .active_variable
@@ -392,7 +397,6 @@ impl ConstrainedLinearization for SerializableHistory {
                 .or_insert_with(Default::default)
                 .remove(curr_txn));
         }
-        self.active_write.retain(|_, ts| !ts.is_empty());
         for &x in curr_txn_info.1.iter() {
             let read_by = self
                 .history
@@ -404,13 +408,14 @@ impl ConstrainedLinearization for SerializableHistory {
                 .unwrap();
             self.active_write.insert(x, read_by.clone());
         }
+        self.active_write.retain(|_, ts| !ts.is_empty());
     }
 
     fn backtrack_book_keeping(&mut self, linearization: &[Self::Vertex]) {
         let curr_txn = linearization.last().unwrap();
         let curr_txn_info = self.history.txns_info.get(curr_txn).unwrap();
         for &x in curr_txn_info.1.iter() {
-            assert!(self.active_write.remove(&x).is_some());
+            self.active_write.remove(&x);
         }
         for (&x, _) in curr_txn_info.0.iter() {
             self.active_write
