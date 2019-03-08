@@ -266,13 +266,17 @@ impl Verifier {
                         }
                     }
                 }
-                transaction_infos.insert((i_node + 1, i_transaction), (read_info, write_info));
+                if !read_info.is_empty() || !write_info.is_empty() {
+                    transaction_infos.insert((i_node + 1, i_transaction), (read_info, write_info));
+                }
             }
         }
 
-        assert!(transaction_infos
-            .insert((0, 0), (Default::default(), root_write_info))
-            .is_none());
+        if !root_write_info.is_empty() {
+            assert!(transaction_infos
+                .insert((0, 0), (Default::default(), root_write_info))
+                .is_none());
+        }
 
         if self.use_sat {
             info!(self.log, "using SAT");
