@@ -52,7 +52,7 @@ where
     fn dfs_util_reach(&self, s: &T, u: &T, reachable: &mut HashSet<T>) -> bool {
         if let Some(vs) = self.adj_map.get(u) {
             for &v in vs.iter() {
-                if reachable.insert(v) && self.dfs_util_reach(s, &v, reachable) {
+                if &v == s || (reachable.insert(v) && self.dfs_util_reach(s, &v, reachable)) {
                     return true;
                 }
             }
