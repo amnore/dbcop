@@ -415,7 +415,7 @@ impl Verifier {
                 _ => unreachable!(),
             }
 
-            sat_solver.solve(&self.dir)
+            sat_solver.solve(&self.dir).is_some()
         } else {
             info!(self.log, "using our algorithms");
 
@@ -475,7 +475,32 @@ impl Verifier {
                     if ser_hist.history.vis.has_cycle() {
                         false
                     } else {
-                        ser_hist.get_linearization().is_some()
+                        let lin_o = ser_hist.get_linearization();
+                        {
+                            // checking correctness
+                            if let Some(ref lin) = lin_o {
+                                let mut curr_value_map: HashMap<usize, (usize, usize)> =
+                                    Default::default();
+                                for txn_id in lin.iter() {
+                                    let (read_info, write_info) =
+                                        transaction_infos.get(txn_id).unwrap();
+                                    for (x, txn1) in read_info.iter() {
+                                        match curr_value_map.get(&x) {
+                                            Some(txn1_) => assert_eq!(txn1_, txn1),
+                                            _ => unreachable!(),
+                                        }
+                                    }
+                                    for &x in write_info.iter() {
+                                        curr_value_map.insert(x, *txn_id);
+                                    }
+                                    // if !write_info.is_empty() {
+                                    //     println!("{:?}", txn_id);
+                                    //     println!("{:?}", curr_value_map);
+                                    // }
+                                }
+                            }
+                        }
+                        lin_o.is_some()
                     }
                 }
                 _ => unreachable!(),

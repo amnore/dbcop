@@ -281,7 +281,7 @@ impl Sat {
         self.add_clauses(&clauses);
     }
 
-    pub fn solve(&self, path: &PathBuf) -> bool {
+    pub fn solve(&self, path: &PathBuf) -> Option<Vec<(usize, usize)>> {
         let inp_cnf = path.join("history.cnf");
         let out_cnf = path.join("result.cnf");
         self.cnf.write_to_file(&inp_cnf);
@@ -341,15 +341,40 @@ impl Sat {
 
             edges.sort_unstable();
 
+            // building co
+            let mut parents: HashMap<(usize, usize), HashSet<(usize, usize)>> = Default::default();
             for e in &edges {
                 if e.0 == Edge::CO {
-                    println!("{:?}", e);
+                    parents
+                        .entry(e.2)
+                        .or_insert_with(Default::default)
+                        .insert(e.1);
+
+                    parents.entry(e.1).or_insert_with(Default::default);
                 }
             }
 
-            true
+            let mut lin = Vec::new();
+
+            while !parents.is_empty() {
+                let next_t: Vec<_> = parents
+                    .iter()
+                    .filter_map(|(t1, t2s)| if t2s.is_empty() { Some(*t1) } else { None })
+                    .collect();
+                assert_eq!(next_t.len(), 1);
+
+                parents.retain(|_, t2s| !t2s.is_empty());
+
+                for (_, t2s) in parents.iter_mut() {
+                    t2s.remove(&next_t[0]);
+                }
+
+                lin.push(next_t[0]);
+            }
+
+            Some(lin)
         } else {
-            false
+            None
         }
     }
 
