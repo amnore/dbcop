@@ -395,7 +395,7 @@ impl Verifier {
 
             sat_solver.pre_vis_co();
             sat_solver.session();
-            sat_solver.wr_ww();
+            sat_solver.wr();
             sat_solver.read_atomic();
 
             match self.consistency_model {

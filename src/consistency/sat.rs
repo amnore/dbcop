@@ -16,7 +16,6 @@ use std::io::Write;
 pub enum Edge {
     CO,
     VI,
-    WW(usize),
 }
 
 #[derive(Debug)]
@@ -151,7 +150,7 @@ impl Sat {
                     clauses.push(vec![(Edge::CO, t1, t2, true), (Edge::CO, t2, t1, true)]);
 
                     for &t3 in self.transactions.iter() {
-                        if t2 != t3 {
+                        if t2 != t3 && t1 != t3 {
                             // CO transitive / CO;CO => CO
                             clauses.push(vec![
                                 (Edge::CO, t1, t2, false),
@@ -187,7 +186,7 @@ impl Sat {
             for &t2 in self.transactions.iter() {
                 if t1 != t2 {
                     for &t3 in self.transactions.iter() {
-                        if t2 != t3 {
+                        if t2 != t3 && t1 != t3 {
                             // VI transitive / VI;VI => VI
                             clauses.push(vec![
                                 (Edge::VI, t1, t2, false),
@@ -202,23 +201,14 @@ impl Sat {
         self.add_clauses(&clauses);
     }
 
-    pub fn wr_ww(&mut self) {
+    pub fn wr(&mut self) {
         let mut clauses = Vec::new();
 
-        for (&x, ref wr_map) in self.write_variable.iter() {
+        for (_, ref wr_map) in self.write_variable.iter() {
             for (&u1, ref vs) in wr_map.iter() {
                 for &v in vs.iter() {
                     // clauses.push(vec![(Edge::WR(x), u1, v, true)]);
                     clauses.push(vec![(Edge::VI, u1, v, true)]);
-                }
-                for (&u2, _) in wr_map.iter() {
-                    if u1 != u2 {
-                        clauses.push(vec![(Edge::WW(x), u1, u2, false), (Edge::CO, u1, u2, true)]);
-                        clauses.push(vec![
-                            (Edge::WW(x), u1, u2, true),
-                            (Edge::WW(x), u2, u1, true),
-                        ]);
-                    }
                 }
             }
         }
@@ -229,13 +219,12 @@ impl Sat {
     pub fn read_atomic(&mut self) {
         let mut clauses = Vec::new();
 
-        for (&x, ref wr_map) in self.write_variable.iter() {
-            for (&u, ref vs) in wr_map.iter() {
+        for (_, ref wr_map) in self.write_variable.iter() {
+            for (&u1, ref vs) in wr_map.iter() {
                 for &v in vs.iter() {
-                    for (&u1, _) in wr_map.iter() {
-                        if u1 != u {
-                            clauses
-                                .push(vec![(Edge::VI, u1, v, false), (Edge::WW(x), u1, u, true)]);
+                    for (&u2, _) in wr_map.iter() {
+                        if u2 != u1 && u2 != v {
+                            clauses.push(vec![(Edge::VI, u2, v, false), (Edge::CO, u2, u1, true)]);
                         }
                     }
                 }
@@ -252,7 +241,7 @@ impl Sat {
             for &t2 in self.transactions.iter() {
                 if t1 != t2 {
                     for &t3 in self.transactions.iter() {
-                        if t2 != t3 {
+                        if t2 != t3 && t1 != t3 {
                             // CO;VI => VI
                             clauses.push(vec![
                                 (Edge::CO, t1, t2, false),
@@ -269,11 +258,11 @@ impl Sat {
 
     pub fn conflict(&mut self) {
         let mut clauses = Vec::new();
-        for (&x, ref wr_map) in self.write_variable.iter() {
+        for (_, ref wr_map) in self.write_variable.iter() {
             for (&u1, _) in wr_map.iter() {
                 for (&u2, _) in wr_map.iter() {
                     if u1 != u2 {
-                        clauses.push(vec![(Edge::WW(x), u1, u2, false), (Edge::VI, u1, u2, true)]);
+                        clauses.push(vec![(Edge::CO, u1, u2, false), (Edge::VI, u1, u2, true)]);
                     }
                 }
             }
@@ -332,26 +321,34 @@ impl Sat {
         }
 
         if !assignments.is_empty() {
-            let mut edges: Vec<_> = self
+            let edges: Vec<_> = self
                 .edge_variable
                 .iter()
-                .filter(|(_, &v)| assignments[&v])
-                .map(|(&k, _)| k)
+                .filter_map(|(&k, &v)| {
+                    if k.0 == Edge::CO {
+                        assert!(k.1 != k.2);
+                        Some(if assignments[&v] {
+                            (k.1, k.2)
+                        } else {
+                            (k.2, k.1)
+                        })
+                    } else {
+                        None
+                    }
+                })
                 .collect();
 
-            edges.sort_unstable();
+            // edges.sort_unstable();
 
             // building co
             let mut parents: HashMap<(usize, usize), HashSet<(usize, usize)>> = Default::default();
             for e in &edges {
-                if e.0 == Edge::CO {
-                    parents
-                        .entry(e.2)
-                        .or_insert_with(Default::default)
-                        .insert(e.1);
+                parents
+                    .entry(e.1)
+                    .or_insert_with(Default::default)
+                    .insert(e.0);
 
-                    parents.entry(e.1).or_insert_with(Default::default);
-                }
+                parents.entry(e.0).or_insert_with(Default::default);
             }
 
             let mut lin = Vec::new();
@@ -380,8 +377,8 @@ impl Sat {
 
     pub fn add_clause(&mut self, edges: &[(Edge, (usize, usize), (usize, usize), bool)]) {
         for edge in edges.iter() {
-            let variable = self.get_variable(edge.0, edge.1, edge.2);
-            self.cnf.add_variable(variable, edge.3);
+            let (variable, flip) = self.get_variable(edge.0, edge.1, edge.2);
+            self.cnf.add_variable(variable, edge.3 ^ flip);
         }
         self.cnf.finish_clause();
     }
@@ -392,8 +389,23 @@ impl Sat {
         }
     }
 
-    pub fn get_variable(&mut self, edge: Edge, u: (usize, usize), v: (usize, usize)) -> usize {
+    pub fn get_variable(
+        &mut self,
+        edge: Edge,
+        u: (usize, usize),
+        v: (usize, usize),
+    ) -> (usize, bool) {
+        assert!(u != v);
         let usable = self.edge_variable.len() + 1;
-        *self.edge_variable.entry((edge, u, v)).or_insert(usable)
+        match edge {
+            Edge::CO if u > v => (
+                *self.edge_variable.entry((edge, v, u)).or_insert(usable),
+                true,
+            ),
+            _ => (
+                *self.edge_variable.entry((edge, u, v)).or_insert(usable),
+                false,
+            ),
+        }
     }
 }
