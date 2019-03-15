@@ -120,6 +120,7 @@ where
 
     fn exec_history(&self, hist: &mut Vec<Session>) {
         let mut threads = (0..self.n_node())
+            .cycle()
             .zip(hist.drain(..))
             .map(|(node_id, mut single_hist)| {
                 let cluster_node = self.get_cluster_node(node_id);
