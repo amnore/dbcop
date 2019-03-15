@@ -426,10 +426,8 @@ impl Verifier {
                     !causal_hist.vis.has_cycle()
                 }
                 Consistency::SnapshotIsolation => {
-                    let mut si_hist = SnapshotIsolationHistory::new(
-                        transaction_infos.clone(),
-                        self.log.clone(),
-                    );
+                    let mut si_hist =
+                        SnapshotIsolationHistory::new(transaction_infos.clone(), self.log.clone());
 
                     let wr = si_hist.history.get_wr();
                     si_hist.history.vis_includes(&wr);
@@ -447,10 +445,8 @@ impl Verifier {
                     }
                 }
                 Consistency::Serializable => {
-                    let mut ser_hist = SerializableHistory::new(
-                        transaction_infos.clone(),
-                        self.log.clone(),
-                    );
+                    let mut ser_hist =
+                        SerializableHistory::new(transaction_infos.clone(), self.log.clone());
 
                     let wr = ser_hist.history.get_wr();
                     ser_hist.history.vis_includes(&wr);
