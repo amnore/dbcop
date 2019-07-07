@@ -1,4 +1,5 @@
 use hashbrown::{HashMap, HashSet};
+use std::fs;
 use std::fs::{File, OpenOptions};
 
 use std::default::Default;
@@ -43,7 +44,7 @@ impl CNF {
         self.clauses.push(Vec::new());
     }
 
-    fn write_to_file(&self, path: &PathBuf) {
+    fn write_to_file(&mut self, path: &PathBuf) {
         let mut file = BufWriter::new(
             OpenOptions::new()
                 .write(true)
@@ -55,9 +56,9 @@ impl CNF {
 
         writeln!(file, "p cnf {} {}", self.n_variable, self.clauses.len() - 1)
             .expect("failed to write parameters");
-        for clause in self.clauses.iter().rev().skip(1) {
+        for clause in self.clauses.drain(..).rev().skip(1) {
             for (sign, literal) in clause {
-                if *sign {
+                if sign {
                     write!(file, "{} ", literal).expect("failed to write cnf to file");
                 } else {
                     write!(file, "-{} ", literal).expect("failed to write cnf to file");
@@ -95,7 +96,7 @@ impl Sat {
             }
         }
 
-        for (_, mut wr_map) in write_variable.iter_mut() {
+        for (_, wr_map) in write_variable.iter_mut() {
             wr_map.entry((0, 0)).or_insert_with(Default::default);
         }
 
@@ -261,7 +262,7 @@ impl Sat {
         self.add_clauses(&clauses);
     }
 
-    pub fn solve(&self, path: &PathBuf) -> Option<Vec<(usize, usize)>> {
+    pub fn solve(&mut self, path: &PathBuf) -> Option<Vec<(usize, usize)>> {
         let inp_cnf = path.join("history.cnf");
         let out_cnf = path.join("result.cnf");
         self.cnf.write_to_file(&inp_cnf);
@@ -276,6 +277,8 @@ impl Sat {
         } else {
             panic!("failed to execute process")
         }
+
+        fs::remove_file(inp_cnf).expect("couldn't delete input cnf");
 
         // println!("status: {}", output.status);
         // println!("stdout: {}", String::from_utf8_lossy(&output.stdout));

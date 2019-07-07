@@ -2,12 +2,14 @@ pub mod algo;
 pub mod sat;
 pub mod util;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Consistency {
-    RepeatableRead,
     ReadCommitted,
+    RepeatableRead,
+    ReadAtomic,
     Causal,
     Prefix,
     SnapshotIsolation,
     Serializable,
+    Inc,
 }

@@ -7,7 +7,7 @@ use rand::Rng;
 
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Duration, Local};
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct Event {
@@ -144,6 +144,10 @@ impl History {
     pub fn get_cloned_params(&self) -> HistParams {
         self.params.clone()
     }
+
+    pub fn get_duration(&self) -> Duration {
+        self.end - self.start
+    }
 }
 
 pub fn generate_single_history(
@@ -154,17 +158,23 @@ pub fn generate_single_history(
 ) -> Vec<Session> {
     let mut counters = HashMap::new();
     let mut random_generator = rand::thread_rng();
-    let variable_range = Uniform::from(0..n_variable);
+    let read_variable_range = Uniform::from(0..n_variable);
+    let jump = (n_variable as f64 / n_node as f64).ceil() as usize;
     (0..n_node)
-        .map(|_| {
+        .map(|i_node| {
+            let i = i_node * jump;
+            let j = std::cmp::min((i_node + 1) * jump, n_variable);
+            // let write_variable_range = Uniform::from(i..j);
             (0..n_transaction)
                 .map(|_| Transaction {
                     events: (0..n_event)
                         .map(|_| {
-                            let variable = variable_range.sample(&mut random_generator);
                             if random_generator.gen() {
+                                let variable = read_variable_range.sample(&mut random_generator);
                                 Event::read(variable)
                             } else {
+                                let variable = read_variable_range.sample(&mut random_generator);
+                                // let variable = write_variable_range.sample(&mut random_generator);
                                 let value = {
                                     let entry = counters.entry(variable).or_insert(0);
                                     *entry += 1;
