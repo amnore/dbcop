@@ -43,19 +43,19 @@ level = levels[dbname]
 print(dbname.capitalize())
 
 
-ALL_EXEC = f"{dbcop_inp}/{dbname}_all_writes"
-ALL_VERI = f"{dbcop_out}/{dbname}_all_writes"
-ALL_VERI_SAT = f"{dbcop_out}/{dbname}_all_writes"
-ALL_VERI_VIO = f"{dbcop_out}/{dbname}_all_writes_inc"
+ALL_EXEC = "{}/{}_all_writes".format(dbcop_inp, dbname)
+ALL_VERI = "{}/{}_all_writes".format(dbcop_out, dbname)
+ALL_VERI_SAT = "{}/{}_all_writes".format(dbcop_out, dbname)
+ALL_VERI_VIO = "{}/{}_all_writes_inc".format(dbcop_out, dbname)
 
-PART_EXEC = f"{dbcop_inp}/{dbname}_partition_writes"
-PART_VERI = f"{dbcop_out}/{dbname}_partition_writes"
-PART_VERI_SAT = f"{dbcop_out}/{dbname}_partition_writes"
-PART_VERI_VIO = f"{dbcop_out}/{dbname}_partition_writes_inc"
+PART_EXEC = "{}/{}_partition_writes".format(dbcop_inp, dbname)
+PART_VERI = "{}/{}_partition_writes".format(dbcop_out, dbname)
+PART_VERI_SAT = "{}/{}_partition_writes".format(dbcop_out, dbname)
+PART_VERI_VIO = "{}/{}_partition_writes_inc".format(dbcop_out, dbname)
 
 
 def get_overhead(file_path):
-    return float(subprocess.check_output(f"history_duration {file_path}".split(), stderr=None))
+    return float(subprocess.check_output("history_duration {}".format(file_path).split(), stderr=None))
 
 
 def get_id_sql(id, sessions, transactions, events, variables, path):
@@ -219,7 +219,7 @@ for i in range(4 if args.all else 1):
     plt.scatter(var_sat, dur_sat, s=80, c=ver_sat, marker='^', alpha=0.2)
     plt.tight_layout()
     # plt.legend(("algo", "sat"), loc='lower right')
-    plt.savefig(f'{plots_dir}/{dbname}_{title[i]}.png')
+    plt.savefig('{}/{}_{}.png'.format(plots_dir, dbname, title[i]))
     # plt.show()
     plt.clf()
     if len(timeout_transactions_part) > 0:
