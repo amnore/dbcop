@@ -1,5 +1,13 @@
 # OOPSLA '19 Artifact Submission
 
+## Setting up the docker image
+
+```
+docker load -i paper_214.tar
+mkdir -p plots
+docker run --mount type=bind,source=`readlink -f plots`,target=/root/dbcop/oopsla19/plots -it --rm oopsla19
+```
+
 ## Getting started
 
 We implemented our work in a tool named `dbcop`(database cop). It can provides three things,
@@ -18,7 +26,7 @@ Running a generated programs on distributed databases requires advanced and comp
 
 To get started, let's verify causal consistency of an execution in AntidoteDB. 
 ```
-dbcop verify -d executions/antidote_all_writes/3_30_20_180/hist-00000 -o antidote_verifier_log -c cc
+    dbcop verify -d executions/antidote_all_writes/3_30_20_180/hist-00000 -o antidote_verifier_log -c cc
 ```
 `-c` takes a consistency levels to check
 
@@ -28,7 +36,7 @@ dbcop verify -d executions/antidote_all_writes/3_30_20_180/hist-00000 -o antidot
 
 To use Sat solver(minisat) backend, pass `--sat` argument.
 ```
-dbcop verify -d executions/antidote_all_writes/3_30_20_180/hist-00000 -o antidote_verifier_log -c cc --sat
+    dbcop verify -d executions/antidote_all_writes/3_30_20_180/hist-00000 -o antidote_verifier_log -c cc --sat
 ```
 This is will verify the history with sat solver.
 
@@ -80,14 +88,14 @@ There are `--help` available for these commands.
 
 #### A list of claims from the paper not supported by the artifact
 
-We claimed SAT backend is much worse than our implementation in bigger histories. We did not include in the default script, because they may take very long time. Even with resource limit (veri_stat.py:74-80) of memory (10 gigabytes), created file size (10 gigabytes) and timeout (10 minutes). 
+We claimed SAT backend is much worse than our implementation in bigger histories. We did not include in the default script, because they may take very long time. Even with resource limit (`veri_stat.py:74-80`) of memory (10 gigabytes), created file size (10 gigabytes) and timeout (10 minutes).
 
 1.  Just to verify the claim on few example someone can run our tool on a couple of big histories, and verify the running time with sat backend is indeed much bigger than with our default implementation.
-    CAUTION: This may crash your system. You may want to run with reduced resource limits mentioned in `veri_stat.py:30-33`.
+    If it crashes your system, run with reduced resource limits mentioned in `veri_stat.py:30-33`.
 
     One example would be following. But one can choose any relatively bigger histories and verify the claim.
 ```
-dbcop verify -d executions/roachdb_general_all_writes/15_30_20_900/hist-00009 -o roachdb_si -c si
-dbcop verify -d executions/roachdb_general_all_writes/15_30_20_900/hist-00009 -o roachdb_si_sat -c si --sat
+    dbcop verify -d executions/roachdb_general_all_writes/15_30_20_900/hist-00009 -o roachdb_si -c si
+    dbcop verify -d executions/roachdb_general_all_writes/15_30_20_900/hist-00009 -o roachdb_si_sat -c si --sat
 ```
-2.  If one wants to run on the all executions anyway, **TODO**
+2.  If one wants to run on the all executions anyway, run `bash run.sh satverify` after `bash run.sh verify` and before `bash run.sh.plot`. Note, we reduced the resource limit to 2 minutes of timeout, 2 gigabytes of memory and 2 gigabytes for SAT cnf file for quicker runtime. But one can modify the parameters at `veri_stat.py:30-33` and try with larger resource limits.

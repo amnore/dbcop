@@ -27,9 +27,12 @@ veri_path.mkdir(parents=True, exist_ok=True)
 
 db_path = veri_path / "stats.db"
 
-timeout_minutes = 10
-MEMORY_LIMIT = 10 * 1024 ** 3  # 10 giga bytes
-FSIZE_LIMIT = 10 * 1024 ** 3  # 10 giga bytes
+TIMELIMIT_MINUTE = 2
+MEMORY_LIMIT_GB = 2
+FSIZE_LIMIT_GB = 2
+
+MEMORY_LIMIT = (1024 ** 3) * MEMORY_LIMIT_GB  # 10 giga bytes
+FSIZE_LIMIT = (1024 ** 3) * FSIZE_LIMIT_GB  # 10 giga bytes
 
 
 def get_conf_from_id(st):
@@ -77,7 +80,7 @@ with sqlite3.connect(str(db_path)) as conn:
                              (FSIZE_LIMIT, FSIZE_LIMIT))
 
         try:
-            outs, errs = proc.communicate(timeout=60 * timeout_minutes)
+            outs, errs = proc.communicate(timeout=60 * TIMELIMIT_MINUTE)
             end_time = time.time()
             timedOut = False
         except subprocess.TimeoutExpired:

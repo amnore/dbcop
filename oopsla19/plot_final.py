@@ -1,3 +1,6 @@
+import matplotlib as mpl
+mpl.use('Agg')
+
 import numpy as np
 import matplotlib.pyplot as plt
 import sqlite3
@@ -7,6 +10,7 @@ import json
 from collections import defaultdict
 import argparse
 import os
+
 
 dbcop_inp = os.environ["DBCOP_INP_DIR"]
 dbcop_out = os.environ["DBCOP_OUT_DIR"]
@@ -42,15 +46,22 @@ level = levels[dbname]
 
 print(dbname.capitalize())
 
+sat_data = True
 
 ALL_EXEC = "{}/{}_all_writes".format(dbcop_inp, dbname)
 ALL_VERI = "{}/{}_all_writes".format(dbcop_out, dbname)
-ALL_VERI_SAT = "{}/{}_all_writes".format(dbcop_out, dbname)
+ALL_VERI_SAT = "{}/{}_all_writes_sat".format(dbcop_out, dbname)
+if not os.path.isdir(ALL_VERI_SAT):
+    ALL_VERI_SAT = "{}/{}_all_writes".format(dbcop_out, dbname)
+    sat_data = False
 ALL_VERI_VIO = "{}/{}_all_writes_inc".format(dbcop_out, dbname)
 
 PART_EXEC = "{}/{}_partition_writes".format(dbcop_inp, dbname)
 PART_VERI = "{}/{}_partition_writes".format(dbcop_out, dbname)
-PART_VERI_SAT = "{}/{}_partition_writes".format(dbcop_out, dbname)
+PART_VERI_SAT = "{}/{}_partition_writes_sat".format(dbcop_out, dbname)
+if not os.path.isdir(PART_VERI_SAT):
+    PART_VERI_SAT = "{}/{}_partition_writes".format(dbcop_out, dbname)
+    sat_data = False
 PART_VERI_VIO = "{}/{}_partition_writes_inc".format(dbcop_out, dbname)
 
 
@@ -216,7 +227,8 @@ for i in range(4 if args.all else 1):
     # plt.title(title[i])
     plt.yscale('log')
     plt.scatter(var_algo, dur_algo, s=80, c=ver_algo, marker='o', alpha=0.2)
-    plt.scatter(var_sat, dur_sat, s=80, c=ver_sat, marker='^', alpha=0.2)
+    if sat_data:
+        plt.scatter(var_sat, dur_sat, s=80, c=ver_sat, marker='^', alpha=0.2)
     plt.tight_layout()
     # plt.legend(("algo", "sat"), loc='lower right')
     plt.savefig('{}/{}_{}.png'.format(plots_dir, dbname, title[i]))

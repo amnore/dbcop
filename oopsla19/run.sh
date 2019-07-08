@@ -25,12 +25,29 @@ verify() {
   python3 veri_stat.py --inp ${DBCOP_INP_DIR}/roachdb_partition_writes --out ${DBCOP_OUT_DIR}/roachdb_partition_writes --consistency si --tag roachdb_partition_si > /dev/null
   python3 veri_stat.py --inp ${DBCOP_INP_DIR}/roachdb_partition_writes --out ${DBCOP_OUT_DIR}/roachdb_partition_writes_inc --tag roachdb_partition_si > /dev/null
 
-
   python3 veri_stat.py --inp ${DBCOP_INP_DIR}/roachdb_general_all_writes --out ${DBCOP_OUT_DIR}/roachdb_general_all_writes --consistency ser --tag roachdb_general_all_ser > /dev/null
   python3 veri_stat.py --inp ${DBCOP_INP_DIR}/roachdb_general_all_writes --out ${DBCOP_OUT_DIR}/roachdb_general_all_writes_inc --tag roachdb_general_all_ser > /dev/null
 
   python3 veri_stat.py --inp ${DBCOP_INP_DIR}/roachdb_general_partition_writes --out ${DBCOP_OUT_DIR}/roachdb_general_partition_writes --consistency ser --tag roachdb_general_partition_ser > /dev/null
   python3 veri_stat.py --inp ${DBCOP_INP_DIR}/roachdb_general_partition_writes --out ${DBCOP_OUT_DIR}/roachdb_general_partition_writes_inc --tag roachdb_general_partition_ser > /dev/null
+}
+
+sat_verify() {
+  mkdir -p ${DBCOP_OUT_DIR}
+
+  python3 veri_stat.py --inp ${DBCOP_INP_DIR}/antidote_all_writes --out ${DBCOP_OUT_DIR}/antidote_all_writes_sat --consistency cc --tag antidote_cc --sat > /dev/null
+
+  python3 veri_stat.py --inp ${DBCOP_INP_DIR}/galera_all_writes --out ${DBCOP_OUT_DIR}/galera_all_writes_sat --consistency si --tag galera_all_si --sat > /dev/null
+
+  python3 veri_stat.py --inp ${DBCOP_INP_DIR}/galera_partition_writes --out ${DBCOP_OUT_DIR}/galera_partition_writes_sat --consistency si --tag galera_partition_si --sat > /dev/null
+
+  python3 veri_stat.py --inp ${DBCOP_INP_DIR}/roachdb_all_writes --out ${DBCOP_OUT_DIR}/roachdb_all_writes_sat --consistency si --tag roachdb_all_si --sat > /dev/null
+
+  python3 veri_stat.py --inp ${DBCOP_INP_DIR}/roachdb_partition_writes --out ${DBCOP_OUT_DIR}/roachdb_partition_writes_sat --consistency si --tag roachdb_partition_si --sat > /dev/null
+
+  python3 veri_stat.py --inp ${DBCOP_INP_DIR}/roachdb_general_all_writes --out ${DBCOP_OUT_DIR}/roachdb_general_all_writes_sat --consistency ser --tag roachdb_general_all_ser --sat > /dev/null
+
+  python3 veri_stat.py --inp ${DBCOP_INP_DIR}/roachdb_general_partition_writes --out ${DBCOP_OUT_DIR}/roachdb_general_partition_writes_sat --consistency ser --tag roachdb_general_partition_ser --sat > /dev/null
 }
 
 
@@ -54,6 +71,10 @@ case $1 in
   v|verify)
     echo Verifying the executed histories.
     verify
+    ;;
+  s|satverify)
+    echo Verifying the executed histories with minisat.
+    # sat_verify
     ;;
   p|plot)
     echo Generating the plots and stats.
