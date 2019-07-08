@@ -8,7 +8,6 @@ from collections import defaultdict
 import argparse
 import os
 
-dbcop_root = os.environ["DBCOP_ROOT"]
 dbcop_inp = os.environ["DBCOP_INP_DIR"]
 dbcop_out = os.environ["DBCOP_OUT_DIR"]
 plots_dir = os.environ["PLOTS_DIR"]
@@ -56,7 +55,7 @@ PART_VERI_VIO = f"{dbcop_out}/{dbname}_partition_writes_inc"
 
 
 def get_overhead(file_path):
-    return float(subprocess.check_output(f"{dbcop_root}/target/release/examples/history_duration {file_path}".split(), stderr=None))
+    return float(subprocess.check_output(f"history_duration {file_path}".split(), stderr=None))
 
 
 def get_id_sql(id, sessions, transactions, events, variables, path):

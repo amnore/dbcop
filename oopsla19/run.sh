@@ -1,25 +1,15 @@
-#!/bin/bash
+#!/bin/ash
 
 set -e
-
-export DBCOP_ROOT=`readlink -f ..`
 
 export DBCOP_INP_DIR="executions"
 export DBCOP_OUT_DIR="verifications"
 export PLOTS_DIR="plots"
 
 
-setup() {
-  [[ -d ${DBCOP_INP_DIR} ]] || tar -xf executions.tar.bz
-
-  cargo build --offline --manifest-path=${DBCOP_ROOT}/Cargo.toml --release
-  cargo build --offline --manifest-path=${DBCOP_ROOT}/Cargo.toml --release --example history_duration
-
-  mkdir -p ${DBCOP_OUT_DIR}
-}
-
-
 verify() {
+  mkdir -p ${DBCOP_OUT_DIR}
+
   python3 veri_stat.py --inp ${DBCOP_INP_DIR}/antidote_all_writes --out ${DBCOP_OUT_DIR}/antidote_all_writes --consistency cc --tag antidote_cc > /dev/null
   python3 veri_stat.py --inp ${DBCOP_INP_DIR}/antidote_all_writes --out ${DBCOP_OUT_DIR}/antidote_all_writes_inc --tag antidote_cc > /dev/null
 
@@ -55,17 +45,12 @@ plot() {
 
 
 clean() {
-  [[ -d ${DBCOP_INP_DIR} ]] && rm -r ${DBCOP_INP_DIR}
   [[ -d ${DBCOP_OUT_DIR} ]] && rm -r ${DBCOP_OUT_DIR}
   [[ -d ${PLOTS} ]] && rm -r ${PLOTS}
 }
 
 
 case $1 in
-  s|setup)
-    echo Setting up.
-    setup
-    ;;
   v|verify)
     echo Verifying the executed histories.
     verify

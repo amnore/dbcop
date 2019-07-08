@@ -9,8 +9,6 @@ import psutil
 import json
 import os
 
-root_dir = pathlib.Path(os.environ["DBCOP_ROOT"])
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--inp", help="bulk execution directory", required=True)
 parser.add_argument("--out", help="bulk verifying directory", required=True)
@@ -59,7 +57,7 @@ with sqlite3.connect(str(db_path)) as conn:
 
         cmd = []
 
-        cmd.append(str(root_dir / 'target' / 'release' / 'dbcop'))
+        cmd.append('dbcop')
         cmd.append('verify')
         cmd.extend(['-d', str(single_exec_path)])
         cmd.extend(['-o', str(single_out_path)])
