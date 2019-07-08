@@ -13,4 +13,3 @@ RUN cargo install --path /root/dbcop --example history_duration
 WORKDIR /root/dbcop/oopsla19
 RUN tar -xf executions.tar.bz
 RUN rm executions.tar.bz
-RUN apt install -y 
