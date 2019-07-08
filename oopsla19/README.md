@@ -55,7 +55,7 @@
 
 1.  To generate the plots and data mentioned in the paper, clone `oopsla19` branch from our repository.
 ```
-git clone --single-branch --branch wip https://gitlab.math.univ-paris-diderot.fr/ranadeep/dbcop.git
+git clone --single-branch --branch oopsla19 https://gitlab.math.univ-paris-diderot.fr/ranadeep/dbcop.git
 cd dbcop/oopsla19
 bash run.sh setup
 bash run.sh verify
