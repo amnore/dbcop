@@ -54,14 +54,13 @@
     -   Bash or similar shell.
 
 1.  To generate the plots and data mentioned in the paper, clone `oopsla19` branch from our repository.
-
-
-    git clone --single-branch --branch wip https://gitlab.math.univ-paris-diderot.fr/ranadeep/dbcop.git
-    cd dbcop/oopsla19
-    bash run.sh setup
-    bash run.sh verify
-    bash run.sh plot
-
+```
+git clone --single-branch --branch wip https://gitlab.math.univ-paris-diderot.fr/ranadeep/dbcop.git
+cd dbcop/oopsla19
+bash run.sh setup
+bash run.sh verify
+bash run.sh plot
+```
 2.  `bash run.sh setup` decompresses the histories and create other necessary directories.
 3.  `bash run.sh verify` verifies the histories and log the outputs from the tool.
 4.  `bash run.sh plot` generates plots and numerical data from the verification logs. 
