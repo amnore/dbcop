@@ -1,27 +1,50 @@
 # OOPSLA '19 Artifact Submission
 
+## Getting started
+
+We implemented our work in a tool named `dbcop`(database cop). It can provides three things,
+
+1.  Program generator to run on a database.
+2.  A `trait`(equivalent to java interface) to run the programs on distributed databases and log the executions.
+    An user can use this trait to write an implementation specific to a database.
+3.  Consistency verifier for these executions.
+
+`dbcop` offers two subcommands - `generate` and `verify`.
+
+1.  `generate` generates programs to run on distributed databases.
+2.  `verify` verifies consistency of the executions of these programs.
+
+Running a generated programs on distributed databases requires advanced and complicated setup. So we collected the executions from 3 databases and focused on the performance of our verifier implementation. The collected executions are available in `/root/dbcop/oopsla19/execution` directory.
+
+To get started, let's verify causal consistency of an execution in AntidoteDB. 
+```
+dbcop verify -d executions/antidote_all_writes/3_30_20_180/hist-00000 -o antidote_verifier_log -c cc
+```
+`-c` takes a consistency levels to check
+
+1.  `cc` for Causal consistency
+2.  `si` for Snapshot Isolation
+3.  `ser` for Serialization
+
+To use Sat solver(minisat) backend, pass `--sat` argument.
+```
+dbcop verify -d executions/antidote_all_writes/3_30_20_180/hist-00000 -o antidote_verifier_log -c cc --sat
+```
+This is will verify the history with sat solver.
+
+There are `--help` available for these commands.
+
+## Step-by-step instructions
+
 1.  We have generated histories for 3 databases.
 
     -   [CockroachDB](https://www.cockroachlabs.com/)
     -   [Galera cluster](https://galeracluster.com)
     -   [AntidoteDB](https://www.antidotedb.eu/)
 
-2.  We used 6 sessions, 30 transactions per sessions, 20 operations per transactions and 6 average variables per session as default and varied one fixed parameter.
-
-    -   CockroachDB for serialization.
-        Sessions {3, 6, 9, 12, 15}
-        Transactions {20, 30, 40, 50, 60}
-        Operations {10, 20, 30, 40, 50}
-        Average variable per session {50, 60, 70, 80, 90}
-            
-    -   CockroachDB for Snapshot Isolation
-        Sessions {3, 6, 9, 12, 15}
-            
-    -   Galera cluster for Snapshot Isolation
-        Sessions {3, 6, 9, 12, 15}
-            
-    -   AntidoteDB for Causal consistency
-        Sessions {3, 6, 9, 12, 15}
+2.  We used 6 sessions, 30 transactions per sessions, 20 operations per transactions and 60 average variables per session as default and varied one fixed parameter.
+    We stored the executions in `'{}_{}_{}_{}'.format(n_sessions, n_transaction, n_operations, n_variables)` sub-directories for each cases.
+    So when we verified the history `executions/antidote_all_writes/3_30_20_180/hist-00000`, we verified an AntidoteDB execution with 3 sessions, 30 transactions per sessions, 20 operations per transactions and 180 variables.
 
 3.  We considered two types of histories for each parameters for these databases.
 
@@ -41,27 +64,30 @@
 
     We did this to generate more consistent histories for CockroachDB and Galera cluster.
 
-5.  We executed this histories on this databases and we log the executions.
-6.  The executions are compressed in `executions.tar.bz`.
-7.  Our tool can analyze the consistency of these executions.
+5.  We executed this histories on these databases and we log the executions.
 
-### Instructions
+### Instructions to reproduce
 
-0.  Requires
+1.  `bash run.sh verify` generates the verifier logs.
+2.  `bash run.sh plot` generates the plots and data.
 
-    -   [Rust](https://www.rust-lang.org/)
-    -   [Python3](https://www.python.org/)
-    -   Bash or similar shell.
+#### A list of claims from the paper supported by the artifact
 
-1.  To generate the plots and data mentioned in the paper, clone `oopsla19` branch from our repository.
+-   The plots in Figure 14 - scalability of our Serialization verifying implementation. They support our claim in section 6 (from line 1001) that our implementation scales really well even with varying number of sessions.
+-   The plots in Figure 15a, 15b - scalability of our Snapshot isolation verifying implementation. They support our approach to implement the reduction from Snapshot Isolation verification to Serialization verification does not reduce performance.
+-   The plot in Figure 15c - the performance of our Causal consistency verifying implementation. 
+-   The minimum violation data in Table 2. They prove our claim in section 6 (from line 1016) that we found large number of violations in Galera cluster and CockroachDB.
+
+#### A list of claims from the paper not supported by the artifact
+
+We claimed SAT backend is much worse than our implementation in bigger histories. We did not include in the default script, because they may take very long time. Even with resource limit (veri_stat.py:74-80) of memory (10 gigabytes), created file size (10 gigabytes) and timeout (10 minutes). 
+
+1.  Just to verify the claim on few example someone can run our tool on a couple of big histories, and verify the running time with sat backend is indeed much bigger than with our default implementation.
+    CAUTION: This may crash your system. You may want to run with reduced resource limits mentioned in `veri_stat.py:30-33`.
+
+    One example would be following. But one can choose any relatively bigger histories and verify the claim.
 ```
-git clone --single-branch --branch oopsla19 https://gitlab.math.univ-paris-diderot.fr/ranadeep/dbcop.git
-cd dbcop/oopsla19
-bash run.sh setup
-bash run.sh verify
-bash run.sh plot
+dbcop verify -d executions/roachdb_general_all_writes/15_30_20_900/hist-00009 -o roachdb_si -c si
+dbcop verify -d executions/roachdb_general_all_writes/15_30_20_900/hist-00009 -o roachdb_si_sat -c si --sat
 ```
-2.  `bash run.sh setup` decompresses the histories and create other necessary directories.
-3.  `bash run.sh verify` verifies the histories and log the outputs from the tool.
-4.  `bash run.sh plot` generates plots and numerical data from the verification logs. 
-    `plots` directory stores the plots. It also outputs the number of minimal violation levels for each consistency levels for each case.
+2.  If one wants to run on the all executions anyway, **TODO**
