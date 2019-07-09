@@ -27,9 +27,9 @@ veri_path.mkdir(parents=True, exist_ok=True)
 
 db_path = veri_path / "stats.db"
 
-TIMELIMIT_MINUTE = 2
-MEMORY_LIMIT_GB = 2
-FSIZE_LIMIT_GB = 2
+TIMELIMIT_MINUTE = 10
+MEMORY_LIMIT_GB = 10
+FSIZE_LIMIT_GB = 10
 
 MEMORY_LIMIT = (1024 ** 3) * MEMORY_LIMIT_GB  # 10 giga bytes
 FSIZE_LIMIT = (1024 ** 3) * FSIZE_LIMIT_GB  # 10 giga bytes
