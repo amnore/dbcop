@@ -74,7 +74,7 @@ case $1 in
     ;;
   s|satverify)
     echo Verifying the executed histories with minisat.
-    # sat_verify
+    sat_verify
     ;;
   p|plot)
     echo Generating the plots and stats.
