@@ -30,7 +30,7 @@ Running a generated program on distributed databases requires an advanced and co
 
 To get started, let's verify causal consistency of an execution in AntidoteDB. 
 ```
-    dbcop verify -d executions/antidote_all_writes/3_30_20_180/hist-00000 -o antidote_verifier_log -c cc
+dbcop verify -d executions/antidote_all_writes/3_30_20_180/hist-00000 -o antidote_verifier_log -c cc
 ```
 `-c` takes a consistency levels to check
 
@@ -40,7 +40,7 @@ To get started, let's verify causal consistency of an execution in AntidoteDB.
 
 To use Sat solver(minisat) backend, pass `--sat` argument.
 ```
-    dbcop verify -d executions/antidote_all_writes/3_30_20_180/hist-00000 -o antidote_verifier_log -c cc --sat
+dbcop verify -d executions/antidote_all_writes/3_30_20_180/hist-00000 -o antidote_verifier_log -c cc --sat
 ```
 This is will verify the history with sat solver.
 
@@ -98,8 +98,8 @@ We claimed the performance of SAT backend is much worse than our implementation 
 
     One example would be the following. But one can choose any reasonable bigger histories and verify the claim.
 ```
-    dbcop verify -d executions/roachdb_general_all_writes/15_30_20_900/hist-00009 -o roachdb_si -c si
-    dbcop verify -d executions/roachdb_general_all_writes/15_30_20_900/hist-00009 -o roachdb_si_sat -c si --sat
+dbcop verify -d executions/roachdb_general_all_writes/15_30_20_900/hist-00009 -o roachdb_si -c si
+dbcop verify -d executions/roachdb_general_all_writes/15_30_20_900/hist-00009 -o roachdb_si_sat -c si --sat
 ```
 2.  If one wants to run on the all executions to generate the plots, run `bash run.sh satverify` between `bash run.sh verify` and `bash run.sh.plot`.
     If it crashes your system, run with reduced resource limits mentioned in `veri_stat.py:30-33`.
