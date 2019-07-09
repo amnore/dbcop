@@ -63,7 +63,7 @@ plot() {
 
 clean() {
   [[ -d ${DBCOP_OUT_DIR} ]] && rm -r ${DBCOP_OUT_DIR}
-  [[ -d ${PLOTS} ]] && rm -r ${PLOTS}
+  [[ -d ${PLOTS_DIR} ]] && rm -r ${PLOTS_DIR}
 }
 
 
