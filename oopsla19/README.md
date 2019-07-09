@@ -14,7 +14,7 @@ Plots will be available in `plots` directory after generating them in Docker env
 
 ## Getting started
 
-We implemented our work in a tool named [dbcop](https://gitlab.math.univ-paris-diderot.fr/ranadeep/dbcop). It provides three things,
+We implemented our work in a tool named [dbcop](https://gitlab.math.univ-paris-diderot.fr/ranadeep/dbcop) using [Rust-lang](https://www.rust-lang.org). It provides three things,
 
 1.  Program generator to run on a database.
 2.  A `trait`(equivalent to java interface) to run the programs on distributed databases and log the executions.
