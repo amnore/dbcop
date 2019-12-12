@@ -2,6 +2,11 @@ extern crate clap;
 extern crate dbcop;
 extern crate postgres;
 
+extern crate rand;
+
+use rand::Rng;
+
+use std::fs;
 use std::path::Path;
 
 use dbcop::db::cluster::{Cluster, ClusterNode, Node};
@@ -28,6 +33,7 @@ impl From<Node> for CockroachNode {
 
 impl ClusterNode for CockroachNode {
     fn exec_session(&self, hist: &mut Vec<Transaction>) {
+        let mut rng = rand::thread_rng();
         match Connection::connect(self.addr.clone(), TlsMode::None) {
             Ok(conn) => hist.iter_mut().for_each(|transaction| {
                 let mut config = transaction::Config::new();
@@ -53,8 +59,8 @@ impl ClusterNode for CockroachNode {
                                 ) {
                                     Ok(result) => {
                                         if !result.is_empty() {
-                                            let mut row = result.get(0);
-                                            let value : i64 = row.get("val");
+                                            let row = result.get(0);
+                                            let value: i64 = row.get("val");
                                             event.value = value as usize;
                                             event.success = true;
                                         } else {
@@ -81,6 +87,8 @@ impl ClusterNode for CockroachNode {
                     }
                     Err(e) => println!("{:?} - TRANSACTION ERROR", e),
                 }
+
+                std::thread::sleep(std::time::Duration::from_millis(rng.gen_range(100, 1000)));
             }),
             Err(_e) => {
                 hist.iter().for_each(|transaction| {
@@ -119,7 +127,7 @@ impl CockroachCluster {
     fn create_variables(&self, n_variable: usize) {
         if let Some(ip) = self.get_postgresql_addr(0) {
             if let Ok(conn) = Connection::connect(ip, TlsMode::None) {
-                for mut stmt in conn
+                for stmt in conn
                     .prepare("INSERT INTO dbcop.variables (var, val) values ($1, 0)")
                     .into_iter()
                 {
@@ -207,5 +215,5 @@ fn main() {
 
     let mut cluster = CockroachCluster::new(&ips);
 
-    cluster.execute_all(hist_dir, hist_out, 500);
+    cluster.execute_all(hist_dir, hist_out, 100);
 }
