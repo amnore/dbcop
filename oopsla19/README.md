@@ -2,7 +2,24 @@
 
 ## Setting up the Docker image
 
-We provide a Docker image as an artifact. It is available at [Google Drive](https://drive.google.com). The required [Docker CE](https://docs.docker.com/install) version is 18.09.
+### Link to the artifact
+
+We provide a Docker image as an artifact. It is available at Google Drive.
+
+```
+https://drive.google.com/open?id=1wCcDMkfPKV5YSHL1JjI2riYgPg5awepE
+```
+
+### Checksum of the artifact
+
+```
+$ md5sum paper_214.tar.bz 
+e43b47006d2b8a64bac8c51370682aa8  paper_214.tar.bz
+```
+
+### Instructions to run the docker image
+
+The required [Docker CE](https://docs.docker.com/install) version is 18.09.
 
 ```
 bzcat -k paper_214.tar.bz | docker load
