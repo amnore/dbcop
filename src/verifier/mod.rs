@@ -1,7 +1,7 @@
-use hashbrown::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 // use std::fs;
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::Write;
 use std::path::PathBuf;
 
 use consistency::sat::Sat;

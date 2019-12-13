@@ -1,4 +1,4 @@
-use hashbrown::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use consistency::util::{ConstrainedLinearization, DiGraph};
 

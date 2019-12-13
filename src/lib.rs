@@ -1,11 +1,7 @@
-extern crate ansi_term;
 extern crate rand;
 
 extern crate chrono;
 extern crate rayon;
-
-extern crate hashbrown;
-extern crate petgraph;
 
 pub mod consistency;
 pub mod db;

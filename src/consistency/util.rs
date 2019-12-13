@@ -2,7 +2,7 @@ use std::cmp::{Eq, Ord};
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use hashbrown::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use std::collections::VecDeque;
 
