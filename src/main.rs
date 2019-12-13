@@ -1,9 +1,5 @@
-extern crate bincode;
-extern crate chrono;
 extern crate clap;
 extern crate dbcop;
-extern crate rayon;
-extern crate serde_yaml;
 
 // use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
