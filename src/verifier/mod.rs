@@ -424,7 +424,7 @@ impl Verifier {
                 _ => unreachable!(),
             }
 
-            if sat_solver.solve(&self.dir).is_some() {
+            if sat_solver.solve().is_some() {
                 None
             } else {
                 Some(self.consistency_model)
