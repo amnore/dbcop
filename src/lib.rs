@@ -1,6 +1,7 @@
 extern crate rand;
 
 extern crate chrono;
+extern crate minisat;
 extern crate rayon;
 
 pub mod consistency;

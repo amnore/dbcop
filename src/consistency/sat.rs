@@ -1,17 +1,8 @@
 use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::fs::{File, OpenOptions};
 
 use std::default::Default;
 
-use std::process::{Command, Stdio};
-
-use std::path::PathBuf;
-
-use std::io::BufRead;
-use std::io::{BufReader, BufWriter};
-
-use std::io::Write;
+use minisat::{Bool, Solver};
 
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Clone, Copy, Debug)]
 pub enum Edge {
@@ -44,28 +35,27 @@ impl CNF {
         self.clauses.push(Vec::new());
     }
 
-    fn write_to_file(&mut self, path: &PathBuf) {
-        let mut file = BufWriter::new(
-            OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(path)
-                .expect("couldn't create"),
-        );
+    fn add_to_solver(&mut self, solver: &mut Solver) -> HashMap<usize, Bool> {
+        let mut literal_map = HashMap::new();
 
-        writeln!(file, "p cnf {} {}", self.n_variable, self.clauses.len() - 1)
-            .expect("failed to write parameters");
-        for clause in self.clauses.drain(..).rev().skip(1) {
-            for (sign, literal) in clause {
-                if sign {
-                    write!(file, "{} ", literal).expect("failed to write cnf to file");
-                } else {
-                    write!(file, "-{} ", literal).expect("failed to write cnf to file");
-                }
-            }
-            writeln!(file, "0").expect("failed to write cnf to file");
+        for mut clause in self.clauses.drain(..).rev().skip(1) {
+            let solver_clause: Vec<_> = clause
+                .drain(..)
+                .map(|(sign, literal)| {
+                    let solver_lit = literal_map
+                        .entry(literal)
+                        .or_insert_with(|| solver.new_lit());
+                    if sign {
+                        *solver_lit
+                    } else {
+                        !*solver_lit
+                    }
+                })
+                .collect();
+            solver.add_clause(solver_clause);
         }
+
+        literal_map
     }
 }
 
@@ -262,110 +252,64 @@ impl Sat {
         self.add_clauses(&clauses);
     }
 
-    pub fn solve(&mut self, path: &PathBuf) -> Option<Vec<(usize, usize)>> {
-        let inp_cnf = path.join("history.cnf");
-        let out_cnf = path.join("result.cnf");
-        self.cnf.write_to_file(&inp_cnf);
+    pub fn solve(&mut self) -> Option<Vec<(usize, usize)>> {
+        let mut solver = minisat::Solver::new();
+        let lit_map = self.cnf.add_to_solver(&mut solver);
 
-        if let Ok(mut child) = Command::new("minisat")
-            .arg(&inp_cnf)
-            .arg(&out_cnf)
-            .stdout(Stdio::null())
-            .spawn()
-        {
-            child.wait().expect("failed to execute process");
-        } else {
-            panic!("failed to execute process")
-        }
-
-        fs::remove_file(inp_cnf).expect("couldn't delete input cnf");
-
-        // println!("status: {}", output.status);
-        // println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-        // println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-
-        let result = File::open(&out_cnf).expect("file couldn't open");
-
-        let reader = BufReader::new(&result);
-
-        let mut lines = reader.lines().map(|l| l.unwrap());
-
-        let mut assignments = HashMap::new();
-
-        match lines.next() {
-            Some(ref e) if e.as_str() == "SAT" => {
-                for line in lines {
-                    for var_st in line.split_whitespace() {
-                        let var: isize = var_st.parse().unwrap();
-                        if var != 0 {
-                            assignments.insert(var.abs() as usize, var > 0);
-                        }
-                    }
-                }
-            }
-            Some(ref e) if e.as_str() == "UNSAT" => {
-                // println!("{:?}", e);
-                // for line in lines {
-                //     println!("{}", line);
-                // }
-            }
-            _ => {
-                unreachable!();
-            }
-        }
-
-        if !assignments.is_empty() {
-            let edges: Vec<_> = self
-                .edge_variable
-                .iter()
-                .filter_map(|(&k, &v)| {
-                    if k.0 == Edge::CO {
-                        assert!(k.1 != k.2);
-                        Some(if assignments[&v] {
-                            (k.1, k.2)
-                        } else {
-                            (k.2, k.1)
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            // edges.sort_unstable();
-
-            // building co
-            let mut parents: HashMap<(usize, usize), HashSet<(usize, usize)>> = Default::default();
-            for e in &edges {
-                parents
-                    .entry(e.1)
-                    .or_insert_with(Default::default)
-                    .insert(e.0);
-
-                parents.entry(e.0).or_insert_with(Default::default);
-            }
-
-            let mut lin = Vec::new();
-
-            while !parents.is_empty() {
-                let next_t: Vec<_> = parents
+        match solver.solve() {
+            Ok(m) => {
+                let edges: Vec<_> = self
+                    .edge_variable
                     .iter()
-                    .filter_map(|(t1, t2s)| if t2s.is_empty() { Some(*t1) } else { None })
+                    .filter_map(|(&k, &v)| {
+                        if k.0 == Edge::CO {
+                            assert!(k.1 != k.2);
+                            Some(if m.value(&lit_map[&v]) {
+                                (k.1, k.2)
+                            } else {
+                                (k.2, k.1)
+                            })
+                        } else {
+                            None
+                        }
+                    })
                     .collect();
-                assert_eq!(next_t.len(), 1);
 
-                parents.retain(|_, t2s| !t2s.is_empty());
+                // edges.sort_unstable();
 
-                for (_, t2s) in parents.iter_mut() {
-                    t2s.remove(&next_t[0]);
+                // building co
+                let mut parents: HashMap<(usize, usize), HashSet<(usize, usize)>> =
+                    Default::default();
+                for e in &edges {
+                    parents
+                        .entry(e.1)
+                        .or_insert_with(Default::default)
+                        .insert(e.0);
+
+                    parents.entry(e.0).or_insert_with(Default::default);
                 }
 
-                lin.push(next_t[0]);
-            }
+                let mut lin = Vec::new();
 
-            Some(lin)
-        } else {
-            None
+                while !parents.is_empty() {
+                    let next_t: Vec<_> = parents
+                        .iter()
+                        .filter_map(|(t1, t2s)| if t2s.is_empty() { Some(*t1) } else { None })
+                        .collect();
+                    assert_eq!(next_t.len(), 1);
+
+                    parents.retain(|_, t2s| !t2s.is_empty());
+
+                    for (_, t2s) in parents.iter_mut() {
+                        t2s.remove(&next_t[0]);
+                    }
+
+                    lin.push(next_t[0]);
+                }
+
+                Some(lin)
+            }
+            Err(()) => None,
         }
     }
 
