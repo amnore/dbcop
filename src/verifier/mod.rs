@@ -272,6 +272,8 @@ impl Verifier {
                         if event.success {
                             if event.write {
                                 write_info.insert(event.variable);
+                                // all variable is initialized at root transaction
+                                root_write_info.insert(event.variable);
                             } else {
                                 let &(wr_i_node, wr_i_transaction, _) =
                                     write_map.get(&(event.variable, event.value)).unwrap();

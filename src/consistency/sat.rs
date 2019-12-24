@@ -39,16 +39,19 @@ impl CNF {
         let mut literal_map = HashMap::new();
 
         for mut clause in self.clauses.drain(..).rev().skip(1) {
-            let solver_clause : Vec<_> = clause.drain(..).map(|(sign, literal)| {
-                let solver_lit = literal_map
-                    .entry(literal)
-                    .or_insert_with(|| solver.new_lit());
-                if sign {
-                    *solver_lit
-                } else {
-                    !*solver_lit
-                }
-            }).collect();
+            let solver_clause: Vec<_> = clause
+                .drain(..)
+                .map(|(sign, literal)| {
+                    let solver_lit = literal_map
+                        .entry(literal)
+                        .or_insert_with(|| solver.new_lit());
+                    if sign {
+                        *solver_lit
+                    } else {
+                        !*solver_lit
+                    }
+                })
+                .collect();
             solver.add_clause(solver_clause);
         }
 
