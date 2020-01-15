@@ -525,6 +525,7 @@ impl Verifier {
                     ser_hist.history.vis_includes(&wr);
                     let mut change = false;
                     // wsc code
+                    let mut now = std::time::Instant::now();
                     println!("wsc start");
                     loop {
                         change |= ser_hist.history.vis_is_trans();
@@ -543,6 +544,7 @@ impl Verifier {
                         }
                     }
                     println!("wsc end");
+                    println!("wsc took {}secs", now.elapsed().as_secs());
 
                     if ser_hist.history.vis.has_cycle() {
                         Some(self.consistency_model)
@@ -574,7 +576,9 @@ impl Verifier {
                         // }
                         // lin_o.is_some();
 
+                        now = std::time::Instant::now();
                         if ser_hist.get_linearization().is_some() {
+                            println!("dbcop main algorithm took {}secs", now.elapsed().as_secs());
                             None
                         } else {
                             Some(self.consistency_model)
