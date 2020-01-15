@@ -69,12 +69,19 @@ impl AtomicHistoryPO {
         wr
     }
 
-    pub fn vis_includes(&mut self, g: &DiGraph<TransactionId>) {
-        self.vis.union_with(g);
+    pub fn vis_includes(&mut self, g: &DiGraph<TransactionId>) -> bool {
+        self.vis.union_with(g)
     }
 
-    pub fn vis_is_trans(&mut self) {
-        self.vis = self.vis.take_closure();
+    pub fn vis_is_trans(&mut self) -> bool {
+        let closure = self.vis.take_closure();
+        let change = self
+            .vis
+            .adj_map
+            .iter()
+            .any(|(k, v)| closure.adj_map.get(k).unwrap().difference(v).count() > 0);
+        self.vis = closure;
+        change
     }
 
     pub fn causal_ww(&mut self) -> HashMap<Variable, DiGraph<TransactionId>> {
@@ -96,6 +103,28 @@ impl AtomicHistoryPO {
         }
 
         ww
+    }
+
+    pub fn causal_rw(&mut self) -> HashMap<Variable, DiGraph<TransactionId>> {
+        let mut rw: HashMap<Variable, DiGraph<TransactionId>> = Default::default();
+
+        for (&x, wr_x) in self.wr_rel.iter() {
+            let mut rw_x: DiGraph<TransactionId> = Default::default();
+            for (t1, t3s) in wr_x.adj_map.iter() {
+                for (t2, _) in wr_x.adj_map.iter() {
+                    if t1 != t2 {
+                        for t3 in t3s.iter() {
+                            if self.vis.has_edge(t3, t2) || self.vis.has_edge(t1, t2) {
+                                rw_x.add_edge(*t3, *t2);
+                            }
+                        }
+                    }
+                }
+            }
+            rw.insert(x, rw_x);
+        }
+
+        rw
     }
 }
 

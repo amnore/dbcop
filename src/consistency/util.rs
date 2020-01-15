@@ -84,13 +84,15 @@ where
         }
     }
 
-    pub fn union_with(&mut self, g: &Self) {
+    pub fn union_with(&mut self, g: &Self) -> bool {
+        let mut change = false;
         for (&u, vs) in g.adj_map.iter() {
             let entry = self.adj_map.entry(u).or_insert_with(Default::default);
             for &v in vs.iter() {
-                entry.insert(v);
+                change = entry.insert(v);
             }
         }
+        change
     }
 }
 
