@@ -477,26 +477,12 @@ impl Verifier {
 
                     let wr = pre_hist.history.get_wr();
                     pre_hist.history.vis_includes(&wr);
-                    let mut change = false;
-                    // wsc code
-                    println!("wsc start");
-                    loop {
-                        change |= pre_hist.history.vis_is_trans();
-                        if !change {
-                            break;
-                        } else {
-                            change = false;
-                        }
-                        let ww = pre_hist.history.causal_ww();
-                        for (_, ww_x) in ww.iter() {
-                            change |= pre_hist.history.vis_includes(ww_x);
-                        }
-                        let rw = pre_hist.history.causal_rw();
-                        for (_, rw_x) in rw.iter() {
-                            change |= pre_hist.history.vis_includes(rw_x);
-                        }
+                    pre_hist.history.vis_is_trans();
+                    let ww = pre_hist.history.causal_ww();
+                    for (_, ww_x) in ww.iter() {
+                        pre_hist.history.vis_includes(ww_x);
                     }
-                    println!("wsc end");
+                    pre_hist.history.vis_is_trans();
 
                     if pre_hist.history.vis.has_cycle() {
                         Some(self.consistency_model)
@@ -537,12 +523,26 @@ impl Verifier {
 
                     let wr = ser_hist.history.get_wr();
                     ser_hist.history.vis_includes(&wr);
-                    ser_hist.history.vis_is_trans();
-                    let ww = ser_hist.history.causal_ww();
-                    for (_, ww_x) in ww.iter() {
-                        ser_hist.history.vis_includes(ww_x);
+                    let mut change = false;
+                    // wsc code
+                    println!("wsc start");
+                    loop {
+                        change |= ser_hist.history.vis_is_trans();
+                        if !change {
+                            break;
+                        } else {
+                            change = false;
+                        }
+                        let ww = ser_hist.history.causal_ww();
+                        for (_, ww_x) in ww.iter() {
+                            change |= ser_hist.history.vis_includes(ww_x);
+                        }
+                        let rw = ser_hist.history.causal_rw();
+                        for (_, rw_x) in rw.iter() {
+                            change |= ser_hist.history.vis_includes(rw_x);
+                        }
                     }
-                    ser_hist.history.vis_is_trans();
+                    println!("wsc end");
 
                     if ser_hist.history.vis.has_cycle() {
                         Some(self.consistency_model)
