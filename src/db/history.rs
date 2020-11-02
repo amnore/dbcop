@@ -9,6 +9,8 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use chrono::{DateTime, Duration, Local};
 
+use serde::{Deserialize, Serialize};
+
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct Event {
     pub write: bool,

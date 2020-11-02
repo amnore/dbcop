@@ -180,6 +180,8 @@ fn main() {
             let buf_reader = BufReader::new(file);
             let hist: History = bincode::deserialize_from(buf_reader).unwrap();
 
+            println!("{:?}", hist);
+
             let o_dir = Path::new(matches.value_of("o_directory").unwrap());
 
             if !o_dir.is_dir() {
@@ -200,6 +202,9 @@ fn main() {
 
             verifier.sat(matches.is_present("sat"));
             verifier.bicomponent(matches.is_present("bicomponent"));
+
+            println!("no. of session {:?}", hist.get_data().len());
+            println!("no. of transactions {:?}", hist.get_data()[0].len());
 
             match verifier.verify(hist.get_data()) {
                 Some(level) => println!(
