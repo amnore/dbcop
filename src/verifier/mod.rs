@@ -526,7 +526,7 @@ impl Verifier {
                     let mut change = false;
                     // wsc code
                     let mut now = std::time::Instant::now();
-                    println!("wsc start");
+                    // println!("wsc start");
                     loop {
                         change |= ser_hist.history.vis_is_trans();
                         if !change {
@@ -543,8 +543,8 @@ impl Verifier {
                             change |= ser_hist.history.vis_includes(rw_x);
                         }
                     }
-                    println!("wsc end");
-                    println!("wsc took {}secs", now.elapsed().as_secs());
+                    // println!("wsc end");
+                    // println!("wsc took {}secs", now.elapsed().as_secs());
 
                     if ser_hist.history.vis.has_cycle() {
                         Some(self.consistency_model)
