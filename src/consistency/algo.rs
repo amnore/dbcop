@@ -114,7 +114,8 @@ impl AtomicHistoryPO {
                 for (t2, _) in wr_x.adj_map.iter() {
                     if t1 != t2 {
                         for t3 in t3s.iter() {
-                            if t3 != t2 && (self.vis.has_edge(t3, t2) || self.vis.has_edge(t1, t2)) {
+                            if t3 != t2 && (self.vis.has_edge(t3, t2) || self.vis.has_edge(t1, t2))
+                            {
                                 rw_x.add_edge(*t3, *t2);
                             }
                         }

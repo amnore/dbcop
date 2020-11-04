@@ -578,7 +578,7 @@ impl Verifier {
 
                         now = std::time::Instant::now();
                         if ser_hist.get_linearization().is_some() {
-                            println!("dbcop main algorithm took {}secs", now.elapsed().as_secs());
+                            // println!("dbcop main algorithm took {}secs", now.elapsed().as_secs());
                             None
                         } else {
                             Some(self.consistency_model)
