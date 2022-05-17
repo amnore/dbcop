@@ -101,12 +101,28 @@ fn main() {
                         .help("Check for mentioned consistency"),
                 )
                 .about("Verifies histories"),
+            SubCommand::with_name("print")
+                .arg(
+                    Arg::with_name("directory")
+                        .short("d")
+                        .takes_value(true)
+                        .help("Directory containing executed history")
+                )
         ])
         .setting(AppSettings::SubcommandRequired);
 
     let app_matches = app.get_matches();
 
     match app_matches.subcommand() {
+        ("print", Some(m)) => {
+            let v_path =
+                Path::new(m.value_of("directory").unwrap()).join("history.bincode");
+            let file = File::open(v_path).unwrap();
+            let buf_reader = BufReader::new(file);
+            let hist: History = bincode::deserialize_from(buf_reader).unwrap();
+
+            println!("{:?}", hist);
+        }
         ("generate", Some(matches)) => {
             let dir = Path::new(matches.value_of("g_directory").unwrap());
 
