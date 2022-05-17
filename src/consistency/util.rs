@@ -117,6 +117,7 @@ pub trait ConstrainedLinearization {
         linearization: &mut Vec<Self::Vertex>,
         seen: &mut HashSet<BTreeSet<Self::Vertex>>,
     ) -> bool {
+        // eprint!("{} ", linearization.len());
         // println!("explored {}", seen.len());
         if !seen.insert(non_det_choices.iter().cloned().collect()) {
             // seen is not modified

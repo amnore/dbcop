@@ -1,19 +1,58 @@
-version:            "3.7"
+version: "3.7"
+
 services:
   galera0:
-    image:          severalnines/mariadb
-    hostname:       galera0
-    container_name: galera0
+    image: bitnami/mariadb-galera
     environment:
-      - MYSQL_ALLOW_EMPTY_PASSWORD=1
-      - XTRABACKUP_PASSWORD=secret
-      - CLUSTER_NAME=galera_cluster
-  galera:
-    image:          severalnines/mariadb
+      - MARIADB_GALERA_CLUSTER_BOOTSTRAP=yes
+      - ALLOW_EMPTY_PASSWORD=yes
+    ports:
+      - 127.0.0.1:3306:3306
+  galera1:
+    image: bitnami/mariadb-galera
     environment:
-      - CLUSTER_JOIN=galera0
-      - MYSQL_ALLOW_EMPTY_PASSWORD=1
-      - XTRABACKUP_PASSWORD=secret
-      - CLUSTER_NAME=galera_cluster
-    depends_on:
-      - galera0
+      - ALLOW_EMPTY_PASSWORD=yes
+      - MARIADB_GALERA_CLUSTER_ADDRESS=gcomm://galera0:4567,0.0.0.0:4567
+    ports:
+      - 127.0.0.1:3307:3306
+    entrypoint: 
+      - "sh"
+      - "-c"
+      - "sleep 10 && /opt/bitnami/scripts/mariadb-galera/entrypoint.sh '/opt/bitnami/scripts/mariadb-galera/run.sh'"
+    depends_on: galera0
+  galera2:
+    image: bitnami/mariadb-galera
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+      - MARIADB_GALERA_CLUSTER_ADDRESS=gcomm://galera0:4567,0.0.0.0:4567
+    ports:
+      - 127.0.0.1:3308:3306
+    entrypoint: 
+      - "sh"
+      - "-c"
+      - "sleep 10 && /opt/bitnami/scripts/mariadb-galera/entrypoint.sh '/opt/bitnami/scripts/mariadb-galera/run.sh'"
+    depends_on: galera0
+  galera3:
+    image: bitnami/mariadb-galera
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+      - MARIADB_GALERA_CLUSTER_ADDRESS=gcomm://galera0:4567,0.0.0.0:4567
+    ports:
+      - 127.0.0.1:3309:3306
+    entrypoint: 
+      - "sh"
+      - "-c"
+      - "sleep 10 && /opt/bitnami/scripts/mariadb-galera/entrypoint.sh '/opt/bitnami/scripts/mariadb-galera/run.sh'"
+    depends_on: galera0
+  galera4:
+    image: bitnami/mariadb-galera
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+      - MARIADB_GALERA_CLUSTER_ADDRESS=gcomm://galera0:4567,0.0.0.0:4567
+    ports:
+      - 127.0.0.1:3310:3306
+    entrypoint: 
+      - "sh"
+      - "-c"
+      - "sleep 10 && /opt/bitnami/scripts/mariadb-galera/entrypoint.sh '/opt/bitnami/scripts/mariadb-galera/run.sh'"
+    depends_on: galera0

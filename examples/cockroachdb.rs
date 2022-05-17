@@ -25,7 +25,7 @@ pub struct CockroachNode {
 impl From<Node> for CockroachNode {
     fn from(node: Node) -> Self {
         CockroachNode {
-            addr: format!("postgresql://{}@{}:26257", "root", node.ip),
+            addr: format!("postgresql://{}@{}:26257", "root", node.addr),
             id: node.id,
         }
     }
@@ -149,7 +149,7 @@ impl CockroachCluster {
 
     fn get_postgresql_addr(&self, i: usize) -> Option<String> {
         match self.0.get(i) {
-            Some(ref node) => Some(format!("postgresql://{}@{}:26257", "root", node.ip)),
+            Some(ref node) => Some(format!("postgresql://{}@{}:26257", "root", node.addr)),
             None => None,
         }
     }

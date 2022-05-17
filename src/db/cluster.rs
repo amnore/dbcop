@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::Path;
 
-use std::net::IpAddr;
+use std::net::SocketAddr;
 
 // use rand::distributions::{Distribution, Uniform};
 // use rand::Rng;
@@ -22,7 +22,7 @@ use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct Node {
-    pub ip: IpAddr,
+    pub addr: SocketAddr,
     pub id: usize,
 }
 
@@ -46,7 +46,7 @@ where
         ips.iter()
             .enumerate()
             .map(|(i, ip)| Node {
-                ip: ip.parse().unwrap(),
+                addr: ip.parse().unwrap(),
                 id: i + 1,
             })
             .collect()

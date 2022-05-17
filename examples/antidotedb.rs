@@ -29,7 +29,7 @@ impl From<Node> for AntidoteNode {
     fn from(node: Node) -> Self {
         AntidoteNode {
             node: node.clone(),
-            addr: format!("{}:8087", node.ip),
+            addr: format!("{}:8087", node.addr),
             id: node.id,
             timestamp: None,
         }

@@ -12,21 +12,21 @@ use std::fs;
 use clap::{App, Arg};
 
 #[derive(Debug)]
-pub struct GaleraNode {
+pub struct TiDBNode {
     addr: String,
     id: usize,
 }
 
-impl From<Node> for GaleraNode {
+impl From<Node> for TiDBNode {
     fn from(node: Node) -> Self {
-        GaleraNode {
+        TiDBNode {
             addr: format!("mysql://{}@{}", "root", node.addr),
             id: node.id,
         }
     }
 }
 
-impl ClusterNode for GaleraNode {
+impl ClusterNode for TiDBNode {
     fn exec_session(&self, hist: &mut Vec<Transaction>) {
         match mysql::Pool::new(self.addr.clone()) {
             Ok(conn) => hist.iter_mut().for_each(|transaction| {
@@ -77,7 +77,7 @@ impl ClusterNode for GaleraNode {
                         }
                         Err(_e) => {
                             assert_eq!(transaction.success, false);
-                            println!("{:?} -- COMMIT ERROR {}", transaction, _e);
+                            // println!("{:?} -- COMMIT ERROR {}", transaction, _e);
                         }
                     }
                 }
@@ -93,11 +93,11 @@ impl ClusterNode for GaleraNode {
 }
 
 #[derive(Debug)]
-pub struct GaleraCluster(Vec<Node>);
+pub struct TiDBCluster(Vec<Node>);
 
-impl GaleraCluster {
+impl TiDBCluster {
     fn new(ips: &Vec<&str>) -> Self {
-        GaleraCluster(GaleraCluster::node_vec(ips))
+        TiDBCluster(TiDBCluster::node_vec(ips))
     }
 
     fn create_table(&self) -> bool {
@@ -109,6 +109,7 @@ impl GaleraCluster {
                     pool.prep_exec(
                         "CREATE TABLE IF NOT EXISTS dbcop.variables (var BIGINT(64) UNSIGNED NOT NULL PRIMARY KEY, val BIGINT(64) UNSIGNED NOT NULL)", ()
                     ).unwrap();
+                    pool.prep_exec("SET GLOBAL tidb_txn_mode = 'optimistic'", ()).unwrap();
                     // conn.query("USE dbcop").unwrap();
                     Ok(true)
                 }).expect("problem creating database"),
@@ -147,7 +148,7 @@ impl GaleraCluster {
     }
 }
 
-impl Cluster<GaleraNode> for GaleraCluster {
+impl Cluster<TiDBNode> for TiDBCluster {
     fn n_node(&self) -> usize {
         self.0.len()
     }
@@ -157,7 +158,7 @@ impl Cluster<GaleraNode> for GaleraCluster {
     fn get_node(&self, id: usize) -> Node {
         self.0[id].clone()
     }
-    fn get_cluster_node(&self, id: usize) -> GaleraNode {
+    fn get_cluster_node(&self, id: usize) -> TiDBNode {
         From::from(self.get_node(id))
     }
     fn setup_test(&mut self, p: &HistParams) {
@@ -172,10 +173,10 @@ impl Cluster<GaleraNode> for GaleraCluster {
 }
 
 fn main() {
-    let matches = App::new("Galera")
+    let matches = App::new("TiDB")
         .version("1.0")
         .author("Ranadeep")
-        .about("executes histories on Galera")
+        .about("executes histories on TiDB")
         .arg(
             Arg::with_name("hist_dir")
                 .long("dir")
@@ -205,7 +206,7 @@ fn main() {
 
     let ips: Vec<_> = matches.values_of("ips").unwrap().collect();
 
-    let mut cluster = GaleraCluster::new(&ips);
+    let mut cluster = TiDBCluster::new(&ips);
 
     cluster.execute_all(hist_dir, hist_out, 500);
 }
