@@ -203,7 +203,7 @@ fn main() {
 
     fs::create_dir_all(hist_out).expect("couldn't create directory");
 
-    let ips: Vec<_> = matches.values_of("ips").unwrap().collect();
+    let ips: Vec<_> = matches.values_of("ip:port").unwrap().collect();
 
     let mut cluster = GaleraCluster::new(&ips);
 

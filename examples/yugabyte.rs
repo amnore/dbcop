@@ -25,7 +25,7 @@ pub struct CockroachNode {
 impl From<Node> for CockroachNode {
     fn from(node: Node) -> Self {
         CockroachNode {
-            addr: format!("postgresql://{}@{}", "root", node.addr),
+            addr: format!("postgresql://{}:{}@{}", "yugabyte", "yugabyte", node.addr),
             id: node.id,
         }
     }
