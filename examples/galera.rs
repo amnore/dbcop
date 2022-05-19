@@ -191,8 +191,8 @@ fn main() {
                 .required(true),
         )
         .arg(
-            Arg::with_name("ips")
-                .help("Cluster ips")
+            Arg::with_name("ip:port")
+                .help("Cluster addrs")
                 .multiple(true)
                 .required(true),
         )

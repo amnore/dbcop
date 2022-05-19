@@ -14,7 +14,7 @@ use dbcop::db::history::{HistParams, Transaction};
 
 use clap::{App, Arg};
 
-use postgres::{transaction, Connection, TlsMode};
+use postgres::{Client, NoTls};
 
 #[derive(Debug)]
 pub struct CockroachNode {
@@ -25,7 +25,7 @@ pub struct CockroachNode {
 impl From<Node> for CockroachNode {
     fn from(node: Node) -> Self {
         CockroachNode {
-            addr: format!("postgresql://{}@{}:26257", "root", node.addr),
+            addr: format!("postgresql://{}@{}", "root", node.addr),
             id: node.id,
         }
     }
@@ -34,12 +34,14 @@ impl From<Node> for CockroachNode {
 impl ClusterNode for CockroachNode {
     fn exec_session(&self, hist: &mut Vec<Transaction>) {
         let mut rng = rand::thread_rng();
-        match Connection::connect(self.addr.clone(), TlsMode::None) {
-            Ok(conn) => hist.iter_mut().for_each(|transaction| {
-                let mut config = transaction::Config::new();
-                config.isolation_level(transaction::IsolationLevel::Serializable);
-                match conn.transaction_with(&config) {
-                    Ok(sqltxn) => {
+        match Client::connect(self.addr.as_str(), NoTls) {
+            Ok(mut conn) => hist.iter_mut().for_each(|transaction| {
+                match conn
+                    .build_transaction()
+                    .isolation_level(postgres::IsolationLevel::Serializable)
+                    .start()
+                {
+                    Ok(mut sqltxn) => {
                         transaction.events.iter_mut().for_each(|event| {
                             if event.write {
                                 match sqltxn.execute(
@@ -60,7 +62,7 @@ impl ClusterNode for CockroachNode {
                                     Ok(result) => {
                                         if !result.is_empty() {
                                             let row = result.get(0);
-                                            let value: i64 = row.get("val");
+                                            let value: i64 = row.unwrap().get("val");
                                             event.value = value as usize;
                                             event.success = true;
                                         } else {
@@ -110,8 +112,8 @@ impl CockroachCluster {
 
     fn create_table(&self) -> bool {
         match self.get_postgresql_addr(0) {
-            Some(ip) => Connection::connect(ip, TlsMode::None)
-                .and_then(|pool| {
+            Some(ip) => Client::connect(ip.as_str(), NoTls)
+                .and_then(|mut pool| {
                     pool.execute("CREATE DATABASE IF NOT EXISTS dbcop",  &[]).unwrap();
                     pool.execute("DROP TABLE IF EXISTS dbcop.variables",  &[]).unwrap();
                     pool.execute(
@@ -126,13 +128,14 @@ impl CockroachCluster {
 
     fn create_variables(&self, n_variable: usize) {
         if let Some(ip) = self.get_postgresql_addr(0) {
-            if let Ok(conn) = Connection::connect(ip, TlsMode::None) {
+            if let Ok(mut conn) = Client::connect(ip.as_str(), NoTls) {
                 for stmt in conn
                     .prepare("INSERT INTO dbcop.variables (var, val) values ($1, 0)")
                     .into_iter()
                 {
                     (0..n_variable).for_each(|variable| {
-                        stmt.execute(&[&(variable as i64)]).unwrap();
+                        conn.execute(&stmt, &[&(variable as i64)])
+                            .expect("Cannot create variable");
                     });
                 }
             }
@@ -141,7 +144,7 @@ impl CockroachCluster {
 
     fn drop_database(&self) {
         if let Some(ip) = self.get_postgresql_addr(0) {
-            if let Ok(conn) = Connection::connect(ip, TlsMode::None) {
+            if let Ok(mut conn) = Client::connect(ip.as_str(), NoTls) {
                 conn.execute("DROP DATABASE dbcop CASCADE", &[]).unwrap();
             }
         }
@@ -199,8 +202,8 @@ fn main() {
                 .required(true),
         )
         .arg(
-            Arg::with_name("ips")
-                .help("Cluster ips")
+            Arg::with_name("ip:port")
+                .help("Cluster addrs")
                 .multiple(true)
                 .required(true),
         )
