@@ -4,8 +4,6 @@ extern crate postgres;
 
 extern crate rand;
 
-use rand::Rng;
-
 use std::fs;
 use std::path::Path;
 
@@ -17,107 +15,106 @@ use clap::{App, Arg};
 use postgres::{Client, NoTls};
 
 #[derive(Debug)]
-pub struct CockroachNode {
+pub struct YugabyteNode {
     addr: String,
     id: usize,
 }
 
-impl From<Node> for CockroachNode {
+impl From<Node> for YugabyteNode {
     fn from(node: Node) -> Self {
-        CockroachNode {
+        YugabyteNode {
             addr: format!("postgresql://{}:{}@{}", "yugabyte", "yugabyte", node.addr),
             id: node.id,
         }
     }
 }
 
-impl ClusterNode for CockroachNode {
+impl ClusterNode for YugabyteNode {
     fn exec_session(&self, hist: &mut Vec<Transaction>) {
-        let mut rng = rand::thread_rng();
-        match Client::connect(self.addr.as_str(), NoTls) {
-            Ok(mut conn) => hist.iter_mut().for_each(|transaction| {
-                match conn
-                    .build_transaction()
-                    .isolation_level(postgres::IsolationLevel::Serializable)
-                    .start()
-                {
-                    Ok(mut sqltxn) => {
-                        transaction.events.iter_mut().for_each(|event| {
-                            if event.write {
-                                match sqltxn.execute(
-                                    "UPDATE dbcop.variables SET val=$1 WHERE var=$2",
-                                    &[&(event.value as i64), &(event.variable as i64)],
-                                ) {
-                                    Ok(_) => event.success = true,
-                                    Err(_e) => {
-                                        assert_eq!(event.success, false);
-                                        // println!("WRITE ERR -- {:?}", _e);
-                                    }
-                                }
-                            } else {
-                                match sqltxn.query(
-                                    "SELECT * FROM dbcop.variables WHERE var=$1",
-                                    &[&(event.variable as i64)],
-                                ) {
-                                    Ok(result) => {
-                                        if !result.is_empty() {
-                                            let row = result.get(0);
-                                            let value: i64 = row.unwrap().get("val");
-                                            event.value = value as usize;
-                                            event.success = true;
-                                        } else {
-                                            // may be diverged
-                                            assert_eq!(event.success, false);
-                                        }
-                                    }
-                                    Err(_e) => {
-                                        // println!("READ ERR -- {:?}", _e);
-                                        assert_eq!(event.success, false);
-                                    }
-                                }
-                            }
-                        });
-                        match sqltxn.commit() {
-                            Ok(_) => {
-                                transaction.success = true;
-                            }
-                            Err(_e) => {
-                                assert_eq!(transaction.success, false);
-                                println!("{:?} -- COMMIT ERROR {}", transaction, _e);
-                            }
+        let mut conn = match Client::connect(self.addr.as_str(), NoTls) {
+            Ok(conn) => conn,
+            Err(e) => {
+                assert_eq!(false, hist.iter().fold(false, |b, t| b | t.success));
+                println!("CONNECTION ERROR {}", e);
+                return;
+            }
+        };
+
+        for transaction in hist.iter_mut() {
+            transaction.success = true;
+            let mut sqltxn = match conn
+                .build_transaction()
+                .isolation_level(postgres::IsolationLevel::RepeatableRead)
+                .start()
+            {
+                Ok(txn) => txn,
+                Err(e) => {
+                    println!("{:?} - TRANSACTION ERROR", e);
+                    transaction.success = false;
+                    continue;
+                }
+            };
+
+            for event in transaction.events.iter_mut() {
+                if event.write {
+                    match sqltxn.execute(
+                        "UPDATE dbcop.variables SET val=$1 WHERE var=$2",
+                        &[&(event.value as i64), &(event.variable as i64)],
+                    ) {
+                        Ok(_) => event.success = true,
+                        Err(e) => {
+                            // If an operation fails, then the whole transaction fails
+                            transaction.success = false;
+                            // println!("WRITE ERR -- {:?}", e);
+                            break;
                         }
                     }
-                    Err(e) => println!("{:?} - TRANSACTION ERROR", e),
+                } else {
+                    match sqltxn.query(
+                        "SELECT * FROM dbcop.variables WHERE var=$1",
+                        &[&(event.variable as i64)],
+                    ) {
+                        Ok(result) => {
+                            let row = result.get(0);
+                            let value: i64 = row.unwrap().get("val");
+                            event.value = value as usize;
+                            event.success = true;
+                        }
+                        Err(e) => {
+                            transaction.success = false;
+                            // println!("READ ERR -- {:?}", e);
+                            break;
+                        }
+                    }
                 }
-
-                std::thread::sleep(std::time::Duration::from_millis(rng.gen_range(100, 1000)));
-            }),
-            Err(_e) => {
-                hist.iter().for_each(|transaction| {
-                    assert_eq!(transaction.success, false);
-                });
-                // println!("CONNECTION ERROR {}", _e);}
             }
+
+            transaction.success &= if let Err(e) = sqltxn.commit() {
+                println!("{:?} -- COMMIT ERROR {}", transaction, e);
+                false
+            } else {
+                true
+            };
         }
     }
 }
 
 #[derive(Debug)]
-pub struct CockroachCluster(Vec<Node>);
+pub struct YugabyteCluster(Vec<Node>);
 
-impl CockroachCluster {
+impl YugabyteCluster {
     fn new(ips: &Vec<&str>) -> Self {
-        CockroachCluster(CockroachCluster::node_vec(ips))
+        YugabyteCluster(YugabyteCluster::node_vec(ips))
     }
 
     fn create_table(&self) -> bool {
         match self.get_postgresql_addr(0) {
             Some(ip) => Client::connect(ip.as_str(), NoTls)
                 .and_then(|mut pool| {
-                    pool.execute("CREATE DATABASE IF NOT EXISTS dbcop",  &[]).unwrap();
+                    pool.execute("CREATE SCHEMA IF NOT EXISTS dbcop",  &[]).unwrap();
                     pool.execute("DROP TABLE IF EXISTS dbcop.variables",  &[]).unwrap();
                     pool.execute(
-                        "CREATE TABLE IF NOT EXISTS dbcop.variables (var INT NOT NULL PRIMARY KEY, val INT NOT NULL)", &[]
+                        "CREATE TABLE IF NOT EXISTS dbcop.variables (var INT8 NOT NULL PRIMARY KEY, val INT8 NOT NULL)", &[]
                     ).unwrap();
                     // conn.query("USE dbcop").unwrap();
                     Ok(true)
@@ -145,20 +142,23 @@ impl CockroachCluster {
     fn drop_database(&self) {
         if let Some(ip) = self.get_postgresql_addr(0) {
             if let Ok(mut conn) = Client::connect(ip.as_str(), NoTls) {
-                conn.execute("DROP DATABASE dbcop CASCADE", &[]).unwrap();
+                conn.execute("DROP SCHEMA dbcop CASCADE", &[]).unwrap();
             }
         }
     }
 
     fn get_postgresql_addr(&self, i: usize) -> Option<String> {
         match self.0.get(i) {
-            Some(ref node) => Some(format!("postgresql://{}@{}:26257", "root", node.addr)),
+            Some(ref node) => Some(format!(
+                "postgresql://{}:{}@{}",
+                "yugabyte", "yugabyte", node.addr
+            )),
             None => None,
         }
     }
 }
 
-impl Cluster<CockroachNode> for CockroachCluster {
+impl Cluster<YugabyteNode> for YugabyteCluster {
     fn n_node(&self) -> usize {
         self.0.len()
     }
@@ -168,7 +168,7 @@ impl Cluster<CockroachNode> for CockroachCluster {
     fn get_node(&self, id: usize) -> Node {
         self.0[id].clone()
     }
-    fn get_cluster_node(&self, id: usize) -> CockroachNode {
+    fn get_cluster_node(&self, id: usize) -> YugabyteNode {
         From::from(self.get_node(id))
     }
     fn setup_test(&mut self, p: &HistParams) {
@@ -178,15 +178,15 @@ impl Cluster<CockroachNode> for CockroachCluster {
         self.drop_database();
     }
     fn info(&self) -> String {
-        "CockroachDB".to_string()
+        "YugabyteDB".to_string()
     }
 }
 
 fn main() {
-    let matches = App::new("CockroachDB")
+    let matches = App::new("YugabyteDB")
         .version("1.0")
         .author("Ranadeep")
-        .about("executes histories on CockroachDB")
+        .about("executes histories on YugaByteDB")
         .arg(
             Arg::with_name("hist_dir")
                 .long("dir")
@@ -216,7 +216,7 @@ fn main() {
 
     let ips: Vec<_> = matches.values_of("ip:port").unwrap().collect();
 
-    let mut cluster = CockroachCluster::new(&ips);
+    let mut cluster = YugabyteCluster::new(&ips);
 
     cluster.execute_all(hist_dir, hist_out, 100);
 }
