@@ -113,8 +113,11 @@ impl PostgresCluster {
                 .and_then(|mut pool| {
                     pool.execute("CREATE SCHEMA IF NOT EXISTS dbcop",  &[]).unwrap();
                     pool.execute("DROP TABLE IF EXISTS dbcop.variables",  &[]).unwrap();
-                    pool.execute(
-                        "CREATE TABLE IF NOT EXISTS dbcop.variables (var INT8 NOT NULL PRIMARY KEY, val INT8 NOT NULL)", &[]
+                    pool.batch_execute(
+                        "CREATE TABLE IF NOT EXISTS dbcop.variables (var INT8 NOT NULL PRIMARY KEY, val INT8 NOT NULL) PARTITION BY HASH (var);
+                         CREATE TABLE IF NOT EXISTS dbcop.variables_0 PARTITION OF dbcop.variables FOR VALUES WITH (modulus 3, remainder 0);
+                         CREATE TABLE IF NOT EXISTS dbcop.variables_1 PARTITION OF dbcop.variables FOR VALUES WITH (modulus 3, remainder 1);
+                         CREATE TABLE IF NOT EXISTS dbcop.variables_2 PARTITION OF dbcop.variables FOR VALUES WITH (modulus 3, remainder 2);"
                     ).unwrap();
                     // conn.query("USE dbcop").unwrap();
                     Ok(true)
