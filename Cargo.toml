@@ -24,6 +24,7 @@ mysql = "17.0.0"
 postgres = "0.19.3"
 mongodb = "1.1.1"
 antidotedb = { git = "https://github.com/rnbguy/antidotedb_rs" }
+dgraph-tonic = { version = "0.10.0", features = ["sync"] }
 
 [profile.release]
 opt-level = 3

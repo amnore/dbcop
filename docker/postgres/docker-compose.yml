@@ -7,3 +7,4 @@ services:
       - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_PASSWORD: postgres
+      PGDATA: /var/lib/postgresql/data/db

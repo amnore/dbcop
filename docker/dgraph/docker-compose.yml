@@ -1,0 +1,23 @@
+version: "3.2"
+services:
+  zero:
+    image: dgraph/dgraph:latest
+    ports:
+      - 127.0.0.1:5080:5080
+      - 127.0.0.1:6080:6080
+    command:
+    - dgraph
+    - zero
+    - --my=zero:5080
+  alpha:
+    image: dgraph/dgraph:latest
+    ports:
+      - 127.0.0.1:8080:8080
+      - 127.0.0.1:9080:9080
+    command:
+      - dgraph
+      - alpha
+      - --my=alpha:7080
+      - --zero=zero:5080
+      - --security
+      - whitelist=0.0.0.0/0

@@ -123,7 +123,7 @@ where
             .cycle()
             .zip(hist.drain(..))
             .map(|(node_id, mut single_hist)| {
-                println!("Executing on node {}: {:?}", node_id, single_hist);
+                // println!("Executing on node {}: {:?}", node_id, single_hist);
                 let cluster_node = self.get_cluster_node(node_id);
                 thread::spawn(move || {
                     cluster_node.exec_session(&mut single_hist);

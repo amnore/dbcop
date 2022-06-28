@@ -2,7 +2,7 @@ version: '3'
 
 services:
   yb-master-0:
-      image: yugabytedb/yugabyte
+      image: yugabytedb/yugabyte:2.6.18.0-b3
       command:
         - "/home/yugabyte/bin/yb-master"
         - "--fs_data_dirs=/mnt/master"
@@ -12,7 +12,7 @@ services:
       ports:
         - "127.0.0.1:7000:7000"
   yb-master-1:
-      image: yugabytedb/yugabyte
+      image: yugabytedb/yugabyte:2.6.18.0-b3
       command:
         - "/home/yugabyte/bin/yb-master"
         - "--fs_data_dirs=/mnt/master"
@@ -20,7 +20,7 @@ services:
         - "--rpc_bind_addresses=yb-master-1:7100"
         - "--replication_factor=2"
   yb-master-2:
-      image: yugabytedb/yugabyte
+      image: yugabytedb/yugabyte:2.6.18.0-b3
       command:
         - "/home/yugabyte/bin/yb-master"
         - "--fs_data_dirs=/mnt/master"
@@ -28,7 +28,7 @@ services:
         - "--rpc_bind_addresses=yb-master-2:7100"
         - "--replication_factor=2"
   yb-tserver-0:
-      image: yugabytedb/yugabyte
+      image: yugabytedb/yugabyte:2.6.18.0-b3
       command:
         - "/home/yugabyte/bin/yb-tserver"
         - "--fs_data_dirs=/mnt/tserver"
@@ -41,7 +41,7 @@ services:
       depends_on:
         - yb-master-0
   yb-tserver-1:
-      image: yugabytedb/yugabyte
+      image: yugabytedb/yugabyte:2.6.18.0-b3
       command:
         - "/home/yugabyte/bin/yb-tserver"
         - "--fs_data_dirs=/mnt/tserver"
@@ -53,7 +53,7 @@ services:
       depends_on:
         - yb-master-0
   yb-tserver-2:
-      image: yugabytedb/yugabyte
+      image: yugabytedb/yugabyte:2.6.18.0-b3
       command:
         - "/home/yugabyte/bin/yb-tserver"
         - "--fs_data_dirs=/mnt/tserver"
