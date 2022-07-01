@@ -57,15 +57,8 @@ impl ClusterNode for DGraphNode {
                 if event.write {
                     let mut mu = Mutation::new();
                     mu.set_set_json(&KeyValuePair { uid: (event.variable + 1).to_string(), val: event.value }).expect("set_set_json");
-                    match txn.mutate(mu) {
-                        Ok(_) => event.success = true,
-                        Err(e) => {
-                            // If an operation fails, then the whole transaction fails
-                            transaction.success = false;
-                            println!("WRITE ERR -- {:?}", e.root_cause());
-                            break;
-                        }
-                    }
+                    txn.mutate(mu).unwrap();
+                    event.success = true;
                 } else {
                     let query = r#"
 query all($a: int) {
@@ -75,18 +68,10 @@ query all($a: int) {
     }
 }
 "#;
-                    match txn.query_with_vars(query, HashMap::from([("$a", (event.variable + 1).to_string())])) {
-                        Ok(result) => {
-                            let all: All = result.try_into().expect("json");
-                            event.value = all.all[0].val as usize;
-                            event.success = true;
-                        }
-                        Err(_e) => {
-                            println!("read err: {}", _e.root_cause());
-                            transaction.success = false;
-                            break;
-                        }
-                    };
+                    let result = txn.query_with_vars(query, HashMap::from([("$a", (event.variable + 1).to_string())])).unwrap();
+                    let all: All = result.try_into().unwrap();
+                    event.value = all.all[0].val as usize;
+                    event.success = true;
                 }
             }
 
