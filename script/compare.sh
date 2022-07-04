@@ -2,22 +2,25 @@
 set -ex
 set -o pipefail
 
-HISTORIES=5
+HISTORIES=3
 SESSIONS=(25)
 TXNS_PER_SESSION=(100)
-OPS_PER_TXN=(5 10 15 20 25 30)
-VARIABLES=(10000)
+OPS_PER_TXN=(20)
+VARIABLES=(1000 2000 3000 4000 6000 8000 10000)
 PARAMS=()
 
 GENERATE_DEST=/tmp/generate/
 HIST_DEST=/tmp/history/
-HIST_SI2SER_DEST=/tmp/history_ser/
+HIST_COBRA_SI_DEST=/tmp/history_cobra_si/
+HIST_COBRA_DEST=/tmp/history_cobra/
 COBRA_DEST=/tmp/cobra/
+COBRA_SI_DEST=/tmp/cobra_si/
+COBRA_NOGPU_DEST=/tmp/cobra_nogpu/
 DBCOP_DEST=/tmp/dbcop/
 SI_DEST=/tmp/si/
 CSV_DEST=/tmp/csv
 
-DB=postgres
+DB=postgres_ser
 ADDR=127.0.0.1:5432
 
 COBRA_DIR="$HOME/Source/CobraVerifier"
@@ -27,12 +30,14 @@ DBCOP_DIR="$HOME/Source/dbcop"
 declare -A AVG_TIME_COBRA=()
 declare -A AVG_TIME_SI=()
 declare -A AVG_TIME_DBCOP=()
+declare -A AVG_TIME_COBRA_SI=()
+declare -A AVG_TIME_COBRA_NOGPU=()
 
 # build tools
 cargo build --manifest-path "$DBCOP_DIR/Cargo.toml" --release
 cargo build --manifest-path "$DBCOP_DIR/Cargo.toml" --release --example $DB
 
-rm -rf $GENERATE_DEST $HIST_DEST $HIST_SI2SER_DEST $COBRA_DEST $DBCOP_DEST $SI_DEST $CSV_DEST
+rm -rf $GENERATE_DEST $HIST_DEST $HIST_COBRA_SI_DEST $HIST_COBRA_DEST $COBRA_DEST $COBRA_SI_DEST $COBRA_NOGPU_DEST $DBCOP_DEST $SI_DEST $CSV_DEST
 
 # generate operations
 for i in "${SESSIONS[@]}"; do
@@ -63,26 +68,89 @@ done
 
 # verify with cobra (transformed with si2ser)
 for p in "${PARAMS[@]}"; do
-  mkdir -p "$COBRA_DEST/$p"
+  mkdir -p "$COBRA_SI_DEST/$p"
   for hist in $(find "$HIST_DEST/$p" -name "hist-*"); do
-    SI2SER_HIST="${hist/$HIST_DEST/$HIST_SI2SER_DEST}"
+    SI2SER_HIST="${hist/$HIST_DEST/$HIST_COBRA_SI_DEST}"
     mkdir -p $SI2SER_HIST
     java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" convert -f dbcop -o cobra -t si2ser $hist/history.bincode $SI2SER_HIST
-    java "-Djava.library.path=$COBRA_DIR/include/:$COBRA_DIR/build/monosat" -jar "$COBRA_DIR/target/CobraVerifier-0.0.1-SNAPSHOT-jar-with-dependencies.jar" mono audit "$HOME/Source/CobraVerifier/cobra.conf.default" $SI2SER_HIST &> "${hist/$HIST_DEST/$COBRA_DEST}"
+    java "-Djava.library.path=$COBRA_DIR/include/:$COBRA_DIR/build/monosat" -jar "$COBRA_DIR/target/CobraVerifier-0.0.1-SNAPSHOT-jar-with-dependencies.jar" mono audit "$HOME/Source/CobraVerifier/cobra.conf.default" $SI2SER_HIST &> "${hist/$HIST_DEST/$COBRA_SI_DEST}"
   done
 done
 
-# verify with dbcop (timeout 3m)
+# verify with cobra (original)
+for p in "${PARAMS[@]}"; do
+  mkdir -p "$COBRA_DEST/$p"
+  for hist in $(find "$HIST_DEST/$p" -name "hist-*"); do
+    COBRA_HIST="${hist/$HIST_DEST/$HIST_COBRA_DEST}"
+    mkdir -p $COBRA_HIST
+    java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" convert -f dbcop -o cobra -t identity $hist/history.bincode $COBRA_HIST
+    java "-Djava.library.path=$COBRA_DIR/include/:$COBRA_DIR/build/monosat" -jar "$COBRA_DIR/target/CobraVerifier-0.0.1-SNAPSHOT-jar-with-dependencies.jar" mono audit "$HOME/Source/CobraVerifier/cobra.conf.default" $COBRA_HIST &> "${hist/$HIST_DEST/$COBRA_DEST}"
+  done
+done
+
+cat > /tmp/cobra.conf.nogpu <<EOF
+HEAVY_VALIDATION_CODE_ON=false
+MULTI_THREADING_OPT=true
+TIME_ORDER_ON=false
+INFER_RELATION_ON=true
+PCSG_ON=true
+WRITE_SPACE_ON=true
+MERGE_CONSTRAINT_ON=false
+LOGGER_ON_SCREEN=true
+LOGGER_PATH=/tmp/cobra/logger.log
+LOGGER_LEVEL=INFO
+LOG_FD_LOG=/tmp/cobra/log/
+FETCHING_DURATION_BASE=500
+FETCHING_DURATION_RAND=500
+NUM_BATCH_FETCH_TRACE=1000
+ONLINE_DB_TYPE=2
+BENCH_TYPE=2
+DUMP_POLYG=false
+MAX_INFER_ROUNDS=1
+BUNDLE_CONSTRAINTS=true
+WW_CONSTRAINTS=true
+BATCH_TX_VERI_SIZE=100
+GPU_MATRIX=false
+TOTAL_CLIENTS=24
+DB_HOST=ye-cheng.duckdns.org
+MIN_PROCESSING_NEW_TXN=5000
+GC_EPOCH_THRESHOLD=100
+TIME_DRIFT_THRESHOLD=100
+EOF
+
+# verify with cobra (nogpu, timeout 3m)
+for p in "${PARAMS[@]}"; do
+  mkdir -p "$COBRA_NOGPU_DEST/$p"
+  for hist in $(find "$HIST_DEST/$p" -name "hist-*"); do
+    COBRA_HIST="${hist/$HIST_DEST/$HIST_COBRA_DEST}"
+    timeout 180 java "-Djava.library.path=$COBRA_DIR/include/:$COBRA_DIR/build/monosat" -jar "$COBRA_DIR/target/CobraVerifier-0.0.1-SNAPSHOT-jar-with-dependencies.jar" mono audit /tmp/cobra.conf.nogpu $COBRA_HIST &> "${hist/$HIST_DEST/$COBRA_NOGPU_DEST}"
+  done
+done
+
+# verify with dbcop (timeout 1m)
 for p in "${PARAMS[@]}"; do
   mkdir -p "$DBCOP_DEST/$p"
   for hist in $(find "$HIST_DEST/$p" -name "hist-*"); do
-    timeout 180 ./target/release/dbcop verify --cons si --ver_dir $hist --out_dir "$DBCOP_DEST/$p" >/dev/null || true
+    timeout 60 $DBCOP_DIR/target/release/dbcop verify --cons si --ver_dir $hist --out_dir "$DBCOP_DEST/$p" >/dev/null || true
     mv "$DBCOP_DEST/$p/result_log.json" "$DBCOP_DEST/$p/$(basename $hist)"
   done
 done
 
 # compute average time
 for p in "${PARAMS[@]}"; do
+  time=()
+  for hist in $(find "$COBRA_NOGPU_DEST/$p" -name "hist-*"); do
+    n="$(cat $hist | sed -nE 's/^\[INFO \] >>> Overall runtime = ([[:digit:]]+)ms$/\1/p')"
+    if [ -n "$n" ]; then
+      time+=("$(bc <<<"scale=4; $n / 1000")")
+    fi
+  done
+  if [ "${#time[@]}" -ne 0 ]; then
+    AVG_TIME_COBRA_NOGPU[$p]="$(IFS='+'; echo "scale=4; (${time[*]}) / ${#time[@]}" | bc)"
+  else
+    AVG_TIME_COBRA_NOGPU[$p]="180"
+  fi
+
   time=()
   for hist in $(find "$COBRA_DEST/$p" -name "hist-*"); do
     n="$(cat $hist | sed -nE 's/^\[INFO \] >>> Overall runtime = ([[:digit:]]+)ms$/\1/p')"
@@ -94,6 +162,19 @@ for p in "${PARAMS[@]}"; do
     AVG_TIME_COBRA[$p]="$(IFS='+'; echo "scale=4; (${time[*]}) / ${#time[@]}" | bc)"
   else
     AVG_TIME_COBRA[$p]="180"
+  fi
+
+  time=()
+  for hist in $(find "$COBRA_SI_DEST/$p" -name "hist-*"); do
+    n="$(cat $hist | sed -nE 's/^\[INFO \] >>> Overall runtime = ([[:digit:]]+)ms$/\1/p')"
+    if [ -n "$n" ]; then
+      time+=("$(bc <<<"scale=4; $n / 1000")")
+    fi
+  done
+  if [ "${#time[@]}" -ne 0 ]; then
+    AVG_TIME_COBRA_SI[$p]="$(IFS='+'; echo "scale=4; (${time[*]}) / ${#time[@]}" | bc)"
+  else
+    AVG_TIME_COBRA_SI[$p]="180"
   fi
 
   time=()
@@ -119,12 +200,12 @@ for p in "${PARAMS[@]}"; do
   if [ "${#time[@]}" -ne 0 ]; then
     AVG_TIME_DBCOP[$p]="$(IFS='+'; echo "scale=4; (${time[*]}) / ${#time[@]}" | bc)"
   else
-    AVG_TIME_DBCOP[$p]="180"
+    AVG_TIME_DBCOP[$p]="60"
   fi
 done
 
 mkdir -p $CSV_DEST
-echo "param,cobra,si,oopsla" > "$CSV_DEST/avg_time.csv"
+echo "param,cobra,cobra(si),cobra(nogpu),si,oopsla" > "$CSV_DEST/avg_time.csv"
 for p in "${PARAMS[@]}"; do
-  echo "$p,${AVG_TIME_COBRA[$p]},${AVG_TIME_SI[$p]},${AVG_TIME_DBCOP[$p]}" >> "$CSV_DEST/avg_time.csv"
+  echo "$p,${AVG_TIME_COBRA[$p]},${AVG_TIME_COBRA_SI[$p]},${AVG_TIME_COBRA_NOGPU[$p]},${AVG_TIME_SI[$p]},${AVG_TIME_DBCOP[$p]}" >> "$CSV_DEST/avg_time.csv"
 done

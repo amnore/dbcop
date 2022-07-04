@@ -6,9 +6,12 @@ services:
       - 127.0.0.1:5080:5080
       - 127.0.0.1:6080:6080
     command:
-    - dgraph
-    - zero
-    - --my=zero:5080
+      - dgraph
+      - zero
+      - --my=zero:5080
+      - --v=3
+    logging:
+      driver: k8s-file
   alpha:
     image: dgraph/dgraph:latest
     ports:
@@ -19,5 +22,7 @@ services:
       - alpha
       - --my=alpha:7080
       - --zero=zero:5080
-      - --security
-      - whitelist=0.0.0.0/0
+      - --security=whitelist=0.0.0.0/0
+      - --v=3
+    logging:
+      driver: k8s-file

@@ -76,7 +76,7 @@ query all($a: int) {
             }
 
             transaction.success &= if let Err(e) = txn.commit() {
-                println!("{:?} -- COMMIT ERROR {}", transaction, e.root_cause());
+                // println!("{:?} -- COMMIT ERROR {}", transaction, e.root_cause());
                 false
             } else {
                 true
