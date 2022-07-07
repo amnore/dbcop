@@ -9,7 +9,8 @@ from functools import reduce
 in_dir = Path('/tmp/csv')
 out_dir = Path('/tmp/plot')
 
-rmtree(out_dir)
+if out_dir.exists():
+    rmtree(out_dir)
 out_dir.mkdir()
 
 for in_file in in_dir.glob('*.csv'):
@@ -25,7 +26,9 @@ for in_file in in_dir.glob('*.csv'):
     plot = data.plot(changed_param_name, [
         'si',
         'oopsla',
-        'cobra'
+        'cobra',
+        'cobra(si)',
+        'cobra(nogpu)'
     ])
     plot.set_ylabel('Time (s)')
     plot.set_title(in_file.name.replace('.csv', '') + ' ' +

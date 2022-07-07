@@ -2,11 +2,17 @@
 set -ex
 set -o pipefail
 
-HISTORIES=3
+# SESSIONS=(25)
+# TXNS_PER_SESSION=(100)
+# OPS_PER_TXN=(20)
+# VARIABLES=(1000 2000 3000 4000 6000 8000 10000)
+
 SESSIONS=(25)
-TXNS_PER_SESSION=(100)
+TXNS_PER_SESSION=(10 20 30 40 50 100 200 300 400 500)
 OPS_PER_TXN=(20)
-VARIABLES=(1000 2000 3000 4000 6000 8000 10000)
+VARIABLES=(10000)
+
+HISTORIES=3
 PARAMS=()
 
 GENERATE_DEST=/tmp/generate/
@@ -123,7 +129,7 @@ for p in "${PARAMS[@]}"; do
   mkdir -p "$COBRA_NOGPU_DEST/$p"
   for hist in $(find "$HIST_DEST/$p" -name "hist-*"); do
     COBRA_HIST="${hist/$HIST_DEST/$HIST_COBRA_DEST}"
-    timeout 180 java "-Djava.library.path=$COBRA_DIR/include/:$COBRA_DIR/build/monosat" -jar "$COBRA_DIR/target/CobraVerifier-0.0.1-SNAPSHOT-jar-with-dependencies.jar" mono audit /tmp/cobra.conf.nogpu $COBRA_HIST &> "${hist/$HIST_DEST/$COBRA_NOGPU_DEST}"
+    timeout 180 java "-Djava.library.path=$COBRA_DIR/include/:$COBRA_DIR/build/monosat" -jar "$COBRA_DIR/target/CobraVerifier-0.0.1-SNAPSHOT-jar-with-dependencies.jar" mono audit /tmp/cobra.conf.nogpu $COBRA_HIST &> "${hist/$HIST_DEST/$COBRA_NOGPU_DEST}" || true
   done
 done
 
