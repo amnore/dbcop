@@ -6,7 +6,6 @@ authors = ["Ranadeep Biswas <ranadip.bswas@gmail.com>"]
 [dependencies]
 rand = "0.7.3"
 clap = "2.33.3"
-minisat = "0.4.4"
 serde = { version = "1.0.117", features = ["derive"] }
 serde_json = "1.0.59"
 serde_yaml = "0.8.14"
@@ -25,6 +24,7 @@ postgres = "0.19.3"
 mongodb = "1.1.1"
 antidotedb = { git = "https://github.com/rnbguy/antidotedb_rs" }
 dgraph-tonic = { version = "0.10.0", features = ["sync"] }
+rsmgclient = "2.0.0"
 
 [profile.release]
 opt-level = 3

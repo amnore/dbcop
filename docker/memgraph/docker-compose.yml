@@ -1,0 +1,9 @@
+version: "3.2"
+services:
+  memgraph:
+    image: memgraph/memgraph
+    ports:
+      - 127.0.0.1:7687:7687
+      - 127.0.0.1:7444:7444
+    logging:
+      driver: k8s-file
