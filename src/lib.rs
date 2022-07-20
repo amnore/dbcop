@@ -1,12 +1,9 @@
 extern crate rand;
 
 extern crate chrono;
-extern crate minisat;
 extern crate rayon;
 
-pub mod consistency;
 pub mod db;
-pub mod verifier;
 
 extern crate serde;
 extern crate serde_json;
