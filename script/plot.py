@@ -23,6 +23,10 @@ for in_file in in_dir.glob('*.csv'):
             changed_param_name = param_names[i]
             data[changed_param_name] = params[i]
 
+    for i in range(len(data['oopsla'])):
+        if data['oopsla'][i] == 60:
+            data['oopsla'][i] = 180
+
     plot = data.plot(changed_param_name, [
         'si',
         'oopsla',
@@ -33,4 +37,5 @@ for in_file in in_dir.glob('*.csv'):
     plot.set_ylabel('Time (s)')
     plot.set_title(in_file.name.replace('.csv', '') + ' ' +
                    reduce(lambda x,y: x+','+y, ['{}={}'.format(param_names[i], params[i][0]) for i in range(4) if param_names[i]!=changed_param_name]))
+    plot.set_ylim([0, 20])
     plt.savefig(out_dir / in_file.name.replace('.csv', '.png'))
