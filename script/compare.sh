@@ -65,6 +65,7 @@ ADDR=127.0.0.1:5432
 COBRA_DIR="$HOME/Source/CobraVerifier"
 SI_DIR="$HOME/Source/CobraVerifier"
 DBCOP_DIR="$HOME/Source/dbcop"
+GENERATOR_DIR="$HOME/Source/generator"
 
 declare -A AVG_TIME_COBRA=()
 declare -A AVG_TIME_SI=()
@@ -74,8 +75,8 @@ declare -A AVG_TIME_COBRA_SI_NOGPU=()
 declare -A AVG_TIME_COBRA_NOGPU=()
 
 # build tools
-cargo build --manifest-path "$DBCOP_DIR/Cargo.toml" --release
-cargo build --manifest-path "$DBCOP_DIR/Cargo.toml" --release --example $DB
+cargo build --manifest-path "$GENERATOR_DIR/Cargo.toml" --release
+cargo build --manifest-path "$GENERATOR_DIR/Cargo.toml" --release --example $DB
 
 rm -rf $GENERATE_DEST $HIST_DEST $HIST_COBRA_SI_DEST $HIST_COBRA_DEST $COBRA_DEST $COBRA_SI_DEST $COBRA_SI_NOGPU_DEST $COBRA_NOGPU_DEST $DBCOP_DEST $SI_DEST $CSV_DEST
 
@@ -88,7 +89,7 @@ for i in "${SESSIONS[@]}"; do
           for n in "${KEY_DISTRIBUTION[@]}"; do
             PARAMS+=("${i}_${j}_${k}_${l}_${m}_${n}")
             mkdir -p "$GENERATE_DEST/${i}_${j}_${k}_${l}_${m}_${n}"
-            "$DBCOP_DIR/target/release/dbcop" generate -d "/tmp/generate/${i}_${j}_${k}_${l}_${m}_${n}" -h $HISTORIES -n $i -t $j -e $k -v $l --readp $m --key_distrib $n
+            "$GENERATOR_DIR/target/release/dbcop" generate -d "/tmp/generate/${i}_${j}_${k}_${l}_${m}_${n}" -h $HISTORIES -n $i -t $j -e $k -v $l --readp $m --key_distrib $n
           done
         done
       done
@@ -99,7 +100,7 @@ done
 # # run operations to get history
 for p in "${PARAMS[@]}"; do
   mkdir -p "$HIST_DEST/$p"
-  "$DBCOP_DIR/target/release/examples/$DB" $ADDR --dir "/tmp/generate/$p" --out "$HIST_DEST/$p" >/dev/null
+  "$GENERATOR_DIR/target/release/examples/$DB" $ADDR --dir "/tmp/generate/$p" --out "$HIST_DEST/$p" >/dev/null
 done
 
 # # verify with si
