@@ -41,60 +41,57 @@ impl ClusterNode for PostgresNode {
         };
 
         for transaction in hist.iter_mut() {
-            transaction.success = true;
-            let mut sqltxn = match conn
-                .build_transaction()
-                .isolation_level(postgres::IsolationLevel::RepeatableRead)
-                .start()
-            {
-                Ok(txn) => txn,
-                Err(e) => {
-                    println!("{:?} - TRANSACTION ERROR", e);
-                    transaction.success = false;
-                    continue;
-                }
-            };
+            while !transaction.success {
+                transaction.success = true;
+                let mut sqltxn = match conn
+                    .build_transaction()
+                    .isolation_level(postgres::IsolationLevel::RepeatableRead)
+                    .start()
+                    {
+                        Ok(txn) => txn,
+                        Err(e) => {
+                            println!("{:?} - TRANSACTION ERROR", e);
+                            transaction.success = false;
+                            continue;
+                        }
+                    };
 
-            for event in transaction.events.iter_mut() {
-                if event.write {
-                    match sqltxn.execute(
-                        "UPDATE dbcop.variables SET val=$1 WHERE var=$2",
-                        &[&(event.value as i64), &(event.variable as i64)],
-                    ) {
-                        Ok(_) => event.success = true,
-                        Err(e) => {
-                            // If an operation fails, then the whole transaction fails
-                            transaction.success = false;
-                            println!("WRITE ERR -- {:?}", e);
-                            break;
+                for event in transaction.events.iter_mut() {
+                    if event.write {
+                        match sqltxn.execute(
+                            "UPDATE dbcop.variables SET val=$1 WHERE var=$2",
+                            &[&(event.value as i64), &(event.variable as i64)],
+                        ) {
+                            Ok(_) => event.success = true,
+                            Err(e) => {
+                                // If an operation fails, then the whole transaction fails
+                                transaction.success = false;
+                                // println!("WRITE ERR -- {:?}", e);
+                                break;
+                            }
                         }
-                    }
-                } else {
-                    match sqltxn.query(
-                        "SELECT * FROM dbcop.variables WHERE var=$1",
-                        &[&(event.variable as i64)],
-                    ) {
-                        Ok(result) => {
-                            let row = result.get(0);
-                            let value: i64 = row.unwrap().get("val");
-                            event.value = value as usize;
-                            event.success = true;
-                        }
-                        Err(e) => {
-                            transaction.success = false;
-                            println!("READ ERR -- {:?}", e);
-                            break;
+                    } else {
+                        match sqltxn.query(
+                            "SELECT * FROM dbcop.variables WHERE var=$1",
+                            &[&(event.variable as i64)],
+                        ) {
+                            Ok(result) => {
+                                let row = result.get(0);
+                                let value: i64 = row.unwrap().get("val");
+                                event.value = value as usize;
+                                event.success = true;
+                            }
+                            Err(e) => {
+                                transaction.success = false;
+                                // println!("READ ERR -- {:?}", e);
+                                break;
+                            }
                         }
                     }
                 }
+
+                transaction.success &= sqltxn.commit().is_ok();
             }
-
-            transaction.success &= if let Err(e) = sqltxn.commit() {
-                println!("{:?} -- COMMIT ERROR {}", transaction, e);
-                false
-            } else {
-                true
-            };
         }
     }
 }

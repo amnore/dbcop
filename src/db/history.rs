@@ -2,10 +2,9 @@ use std::fmt;
 
 use std::collections::HashMap;
 
-use rand::distributions::{Distribution, Uniform};
-use rand::Rng;
+use rand::distributions::{Distribution, Bernoulli};
 
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use db::distribution::MyDistributionTrait;
 
 use chrono::{DateTime, Duration, Local};
 
@@ -157,40 +156,36 @@ pub fn generate_single_history(
     n_variable: usize,
     n_transaction: usize,
     n_event: usize,
+    read_probability: f64,
+    key_distribution: &dyn MyDistributionTrait,
 ) -> Vec<Session> {
     let mut counters = HashMap::new();
     let mut random_generator = rand::thread_rng();
-    let read_variable_range = Uniform::from(0..n_variable);
-    let jump = (n_variable as f64 / n_node as f64).ceil() as usize;
-    (0..n_node)
-        .map(|i_node| {
-            // let i = i_node * jump;
-            // let j = std::cmp::min((i_node + 1) * jump, n_variable);
-            // let write_variable_range = Uniform::from(i..j);
-            (0..n_transaction)
-                .map(|_| Transaction {
-                    events: (0..n_event)
-                        .map(|_| {
-                            if random_generator.gen() {
-                                let variable = read_variable_range.sample(&mut random_generator);
-                                Event::read(variable)
-                            } else {
-                                let variable = read_variable_range.sample(&mut random_generator);
-                                // let variable = write_variable_range.sample(&mut random_generator);
-                                let value = {
-                                    let entry = counters.entry(variable).or_insert(0);
-                                    *entry += 1;
-                                    *entry
-                                };
-                                Event::write(variable, value)
-                            }
-                        })
-                        .collect(),
-                    success: false,
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>()
+    let read_distribution = Bernoulli::new(read_probability).unwrap();
+    let _jump = (n_variable as f64 / n_node as f64).ceil() as usize;
+    (0..n_node).map(|_| {
+        // let i = i_node * jump;
+        // let j = std::cmp::min((i_node + 1) * jump, n_variable);
+        // let write_variable_range = Uniform::from(i..j);
+        (0..n_transaction).map(|_| Transaction {
+            events: (0..n_event).map(|_| {
+                if read_distribution.sample(&mut random_generator) {
+                    let variable = key_distribution.sample(&mut random_generator);
+                    Event::read(variable)
+                } else {
+                    let variable = key_distribution.sample(&mut random_generator);
+                    // let variable = write_variable_range.sample(&mut random_generator);
+                    let value = {
+                        let entry = counters.entry(variable).or_insert(0);
+                        *entry += 1;
+                        *entry
+                    };
+                    Event::write(variable, value)
+                }
+            }).collect(),
+            success: false,
+        }).collect()
+    }).collect()
 }
 
 pub fn generate_mult_histories(
@@ -199,26 +194,32 @@ pub fn generate_mult_histories(
     n_variable: usize,
     n_transaction: usize,
     n_event: usize,
+    read_probability: f64,
+    key_distribution: &dyn MyDistributionTrait,
 ) -> Vec<History> {
-    (0..n_hist)
-        .into_par_iter()
-        .map(|i_hist| {
-            let start_time = Local::now();
-            let hist = generate_single_history(n_node, n_variable, n_transaction, n_event);
-            let end_time = Local::now();
-            History {
-                params: HistParams {
-                    id: i_hist,
-                    n_node,
-                    n_variable,
-                    n_transaction,
-                    n_event,
-                },
-                info: "generated".to_string(),
-                start: start_time,
-                end: end_time,
-                data: hist,
-            }
-        })
-        .collect()
+    (0..n_hist).map(|i_hist| {
+        let start_time = Local::now();
+        let hist = generate_single_history(
+            n_node,
+            n_variable,
+            n_transaction,
+            n_event,
+            read_probability,
+            key_distribution
+        );
+        let end_time = Local::now();
+        History {
+            params: HistParams {
+                id: i_hist,
+                n_node,
+                n_variable,
+                n_transaction,
+                n_event,
+            },
+            info: "generated".to_string(),
+            start: start_time,
+            end: end_time,
+            data: hist,
+        }
+    }).collect()
 }
