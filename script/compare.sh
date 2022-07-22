@@ -2,9 +2,9 @@
 set -ex
 set -o pipefail
 
-# SESSIONS=(25)
+# SESSIONS=(20)
 # TXNS_PER_SESSION=(100)
-# OPS_PER_TXN=(20)
+# OPS_PER_TXN=(15)
 # VARIABLES=(1000 2000 3000 4000 6000 8000 10000)
 # READ_PROBABILITY=(0.5)
 # KEY_DISTRIBUTION=("uniform")
@@ -16,12 +16,12 @@ set -o pipefail
 # READ_PROBABILITY=(0.5)
 # KEY_DISTRIBUTION=("uniform")
 
-# SESSIONS=(25)
-# TXNS_PER_SESSION=(300)
-# OPS_PER_TXN=(5 10 15 20 25 30)
-# VARIABLES=(10000)
-# READ_PROBABILITY=(0.5)
-# KEY_DISTRIBUTION=("uniform")
+SESSIONS=(20)
+TXNS_PER_SESSION=(100)
+OPS_PER_TXN=(5 10 15 20 25 30)
+VARIABLES=(10000)
+READ_PROBABILITY=(0.5)
+KEY_DISTRIBUTION=("uniform")
 
 # SESSIONS=(5 10 15 20 25 30 35)
 # TXNS_PER_SESSION=(300)
@@ -30,16 +30,16 @@ set -o pipefail
 # READ_PROBABILITY=(0.5)
 # KEY_DISTRIBUTION=("uniform")
 
-SESSIONS=(20)
-TXNS_PER_SESSION=(150)
-OPS_PER_TXN=(15)
-VARIABLES=(10000)
-READ_PROBABILITY=(0 0.25 0.5 0.75 1)
-KEY_DISTRIBUTION=("uniform")
+# SESSIONS=(20)
+# TXNS_PER_SESSION=(150)
+# OPS_PER_TXN=(15)
+# VARIABLES=(10000)
+# READ_PROBABILITY=(0 0.25 0.5 0.75 1)
+# KEY_DISTRIBUTION=("uniform")
 
-# SESSIONS=(25)
+# SESSIONS=(20)
 # TXNS_PER_SESSION=(200)
-# OPS_PER_TXN=(20)
+# OPS_PER_TXN=(15)
 # VARIABLES=(10000)
 # READ_PROBABILITY=(0.5)
 # KEY_DISTRIBUTION=("uniform" "zipf" "hotspot")
@@ -97,13 +97,13 @@ for i in "${SESSIONS[@]}"; do
   done
 done
 
-# # run operations to get history
+# run operations to get history
 for p in "${PARAMS[@]}"; do
   mkdir -p "$HIST_DEST/$p"
   "$GENERATOR_DIR/target/release/examples/$DB" $ADDR --dir "/tmp/generate/$p" --out "$HIST_DEST/$p" >/dev/null
 done
 
-# # verify with si
+# verify with si
 for p in "${PARAMS[@]}"; do
   mkdir -p "$SI_DEST/$p"
   for hist in $(find "$HIST_DEST/$p" -name "hist-*"); do

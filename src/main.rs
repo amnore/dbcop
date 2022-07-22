@@ -142,7 +142,7 @@ fn main() {
                 match matches.value_of("key_distribution") {
                     Some("uniform") => Box::new(MyDistribution::new(Uniform::new(0, n_variable))),
                     Some("zipf") => Box::new(MyDistribution::new(
-                        ZipfDistribution::new(n_variable, 0.99)
+                        ZipfDistribution::new(n_variable, 0.5)
                             .unwrap()
                             .map(|x| x - 1),
                     )),
