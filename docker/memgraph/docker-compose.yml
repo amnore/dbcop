@@ -11,4 +11,4 @@ services:
       - /bin/sh
     command:
       - -c
-      - ln -s /dev/stdout /var/log/memgraph/memgraph_$(date +%Y-%m-%d).log && /usr/lib/memgraph/memgraph --log-level=TRACE
+      - ln -s /dev/stdout /var/log/memgraph/memgraph_$$(date +%Y-%m-%d).log && exec /usr/lib/memgraph/memgraph --log-level=TRACE
