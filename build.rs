@@ -8,6 +8,7 @@ fn main() {
 
     cxx_build::bridge("src/clients/memgraph.rs")
         .file("src/clients/memgraph.cpp")
+        .flag("-std=c++17")
         .includes([
             "mgclient/mgclient_cpp/include",
             format!("{}/include", env::var("OUT_DIR").unwrap()).as_str(),
