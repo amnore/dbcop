@@ -6,4 +6,9 @@ services:
       - 127.0.0.1:7687:7687
       - 127.0.0.1:7444:7444
     logging:
-      driver: k8s-file
+      driver: json-file
+    entrypoint:
+      - /bin/sh
+    command:
+      - -c
+      - ln -s /dev/stdout /var/log/memgraph/memgraph_$(date +%Y-%m-%d).log && /usr/lib/memgraph/memgraph --log-level=TRACE

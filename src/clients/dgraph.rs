@@ -1,22 +1,15 @@
-extern crate clap;
-extern crate dbcop;
-extern crate dgraph_tonic;
-extern crate serde;
-
-extern crate rand;
-
 use std::fs;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::collections::HashMap;
 
-use dbcop::db::cluster::{Cluster, ClusterNode, Node};
-use dbcop::db::history::{HistParams, Transaction};
+use crate::db::cluster::{Cluster, ClusterNode, Node};
+use crate::db::history::{HistParams, Transaction};
 
 use clap::{App, Arg};
 
 use dgraph_tonic::sync::{Client, Mutate, Query};
-use dgraph_tonic::{Operation, Mutation};
+use dgraph_tonic::{Operation, Mutation, Response};
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug)]
@@ -34,6 +27,12 @@ struct KeyValuePair {
 #[derive(Serialize, Deserialize)]
 struct All {
     all: Vec<KeyValuePair>,
+}
+
+impl From<Response> for All {
+    fn from(r: Response) -> Self {
+        serde_json::from_slice(&r.json).unwrap()
+    }
 }
 
 impl From<Node> for DGraphNode {
@@ -163,40 +162,40 @@ impl Cluster<DGraphNode> for DGraphCluster {
     }
 }
 
-fn main() {
-    let matches = App::new("DGraph")
-        .version("1.0")
-        .author("Ranadeep")
-        .about("executes histories on DGraph")
-        .arg(
-            Arg::with_name("hist_dir")
-                .long("dir")
-                .short("d")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("hist_out")
-                .long("out")
-                .short("o")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("ip:port")
-                .help("DB addr")
-                .required(true),
-        )
-        .get_matches();
+// fn main() {
+//     let matches = App::new("DGraph")
+//         .version("1.0")
+//         .author("Ranadeep")
+//         .about("executes histories on DGraph")
+//         .arg(
+//             Arg::with_name("hist_dir")
+//                 .long("dir")
+//                 .short("d")
+//                 .takes_value(true)
+//                 .required(true),
+//         )
+//         .arg(
+//             Arg::with_name("hist_out")
+//                 .long("out")
+//                 .short("o")
+//                 .takes_value(true)
+//                 .required(true),
+//         )
+//         .arg(
+//             Arg::with_name("ip:port")
+//                 .help("DB addr")
+//                 .required(true),
+//         )
+//         .get_matches();
 
-    let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
-    let hist_out = Path::new(matches.value_of("hist_out").unwrap());
+//     let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
+//     let hist_out = Path::new(matches.value_of("hist_out").unwrap());
 
-    fs::create_dir_all(hist_out).expect("couldn't create directory");
+//     fs::create_dir_all(hist_out).expect("couldn't create directory");
 
-    let ips: Vec<_> = matches.values_of("ip:port").unwrap().collect();
+//     let ips: Vec<_> = matches.values_of("ip:port").unwrap().collect();
 
-    let mut cluster = DGraphCluster::new(&ips);
+//     let mut cluster = DGraphCluster::new(&ips);
 
-    cluster.execute_all(hist_dir, hist_out, 100);
-}
+//     cluster.execute_all(hist_dir, hist_out, 100);
+// }

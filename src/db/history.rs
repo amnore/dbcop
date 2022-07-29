@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use rand::distributions::{Distribution, Bernoulli};
 
-use db::distribution::MyDistributionTrait;
+use super::distribution::MyDistributionTrait;
 
 use chrono::{DateTime, Duration, Local};
 

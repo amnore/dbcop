@@ -1,4 +1,4 @@
-use db::history::{HistParams, History, Session};
+use super::history::{HistParams, History, Session};
 // use verifier::Verifier;
 
 // use std::collections::HashMap;
@@ -42,7 +42,7 @@ where
     fn cleanup(&self);
     fn info(&self) -> String;
 
-    fn node_vec(ips: &[&str]) -> Vec<Node> {
+    fn node_vec(ips: &[&str]) -> Vec<Node> where Self: Sized {
         ips.iter()
             .enumerate()
             .map(|(i, ip)| Node {

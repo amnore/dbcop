@@ -1,9 +1,9 @@
-extern crate clap;
-extern crate dbcop;
-extern crate rand;
-extern crate zipf;
+mod clients;
+mod db;
 
 use clap::{App, AppSettings, Arg, SubCommand};
+use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster};
+use db::cluster::{Cluster, ClusterNode};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
@@ -13,9 +13,9 @@ use std::path::Path;
 
 use std::fs;
 
-use dbcop::db::distribution::{MyDistribution, MyDistributionTrait};
-use dbcop::db::history::generate_mult_histories;
-use dbcop::db::history::History;
+use db::distribution::{MyDistribution, MyDistributionTrait};
+use db::history::generate_mult_histories;
+use db::history::History;
 
 use zipf::ZipfDistribution;
 
@@ -56,7 +56,7 @@ fn main() {
                 .arg(
                     Arg::with_name("g_directory")
                         .long("gen_dir")
-                        .short("d")
+                        .short('d')
                         .takes_value(true)
                         .required(true)
                         .help("Directory to generate histories"),
@@ -64,65 +64,95 @@ fn main() {
                 .arg(
                     Arg::with_name("n_history")
                         .long("nhist")
-                        .short("h")
-                        .default_value("10")
+                        .required(true)
+                        .takes_value(true)
                         .help("Number of histories to generate"),
                 )
                 .arg(
                     Arg::with_name("n_node")
                         .long("nnode")
-                        .short("n")
-                        .default_value("3")
+                        .short('n')
+                        .required(true)
+                        .takes_value(true)
                         .help("Number of nodes per history"),
                 )
                 .arg(
                     Arg::with_name("n_variable")
                         .long("nvar")
-                        .short("v")
-                        .default_value("5")
+                        .short('v')
+                        .required(true)
+                        .takes_value(true)
                         .help("Number of variables per history"),
                 )
                 .arg(
                     Arg::with_name("n_transaction")
                         .long("ntxn")
-                        .short("t")
-                        .default_value("5")
+                        .short('t')
+                        .required(true)
+                        .takes_value(true)
                         .help("Number of transactions per history"),
                 )
                 .arg(
                     Arg::with_name("n_event")
                         .long("nevt")
-                        .short("e")
-                        .default_value("2")
+                        .short('e')
+                        .required(true)
+                        .takes_value(true)
                         .help("Number of events per transactions"),
                 )
                 .arg(
                     Arg::with_name("read_probability")
                         .long("readp")
-                        .default_value("0.5")
+                        .required(true)
+                        .takes_value(true)
                         .help("Probability for an event to be a read"),
                 )
                 .arg(
                     Arg::with_name("key_distribution")
                         .long("key_distrib")
-                        .possible_values(&["uniform", "zipf", "hotspot"])
-                        .default_value("uniform")
+                        .required(true)
+                        .takes_value(true)
+                        .possible_values(["uniform", "zipf", "hotspot"])
                         .help("Key access distribution"),
                 )
                 .about("Generate histories"),
             SubCommand::with_name("print").arg(
                 Arg::with_name("directory")
-                    .short("d")
+                    .short('d')
                     .takes_value(true)
                     .help("Directory containing executed history"),
             ),
+            SubCommand::with_name("run")
+                .about("Execute operations on db")
+                .arg(
+                    Arg::with_name("hist_dir")
+                        .long("dir")
+                        .short('d')
+                        .takes_value(true)
+                        .required(true),
+                )
+                .arg(
+                    Arg::with_name("hist_out")
+                        .long("out")
+                        .short('o')
+                        .takes_value(true)
+                        .required(true),
+                )
+                .arg(Arg::with_name("ip:port").help("DB addr").required(true))
+                .arg(
+                    Arg::with_name("database")
+                        .long("db")
+                        .takes_value(true)
+                        .possible_values(["memgraph", "postgres"])
+                        .required(true),
+                ),
         ])
         .setting(AppSettings::SubcommandRequired);
 
     let app_matches = app.get_matches();
 
     match app_matches.subcommand() {
-        ("print", Some(m)) => {
+        Some(("print", m)) => {
             let v_path = Path::new(m.value_of("directory").unwrap()).join("history.bincode");
             let file = File::open(v_path).unwrap();
             let buf_reader = BufReader::new(file);
@@ -130,7 +160,7 @@ fn main() {
 
             println!("{:?}", hist);
         }
-        ("generate", Some(matches)) => {
+        Some(("generate", matches)) => {
             let dir = Path::new(matches.value_of("g_directory").unwrap());
 
             if !dir.is_dir() {
@@ -173,6 +203,22 @@ fn main() {
                 bincode::serialize_into(buf_writer, &hist)
                     .expect("dumping history to bincode file went wrong");
             }
+        }
+        Some(("run", matches)) => {
+            let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
+            let hist_out = Path::new(matches.value_of("hist_out").unwrap());
+
+            fs::create_dir_all(hist_out).expect("couldn't create directory");
+
+            let ips: Vec<_> = matches.values_of("ip:port").unwrap().collect();
+
+            let mut cluster: Box<dyn Cluster<DynNode>> = match matches.value_of("database") {
+                Some("memgraph") => Box::new(DynCluster::new(MemgraphCluster::new(&ips))),
+                Some("postgres") => Box::new(DynCluster::new(PostgresCluster::new(&ips))),
+                _ => unreachable!(),
+            };
+
+            cluster.execute_all(hist_dir, hist_out, 100);
         }
         _ => unreachable!(),
     }

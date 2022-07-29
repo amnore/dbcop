@@ -1,18 +1,11 @@
-extern crate clap;
-extern crate dbcop;
-extern crate postgres;
-extern crate indicatif;
-
-extern crate rand;
-
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::thread::spawn;
 use std::io::Write;
 
-use dbcop::db::cluster::{Cluster, ClusterNode, Node};
-use dbcop::db::history::{HistParams, Transaction};
+use crate::db::cluster::{Cluster, ClusterNode, Node};
+use crate::db::history::{HistParams, Transaction};
 
 use clap::{App, Arg};
 
@@ -115,7 +108,7 @@ impl ClusterNode for PostgresNode {
 pub struct PostgresCluster(Vec<Node>, Arc<MultiProgress>);
 
 impl PostgresCluster {
-    fn new(ips: &Vec<&str>) -> Self {
+    pub fn new(ips: &Vec<&str>) -> Self {
         PostgresCluster(PostgresCluster::node_vec(ips), Arc::new(MultiProgress::new()))
     }
 
@@ -203,40 +196,40 @@ impl Cluster<PostgresNode> for PostgresCluster {
     }
 }
 
-fn main() {
-    let matches = App::new("PostgreSQL")
-        .version("1.0")
-        .author("Ranadeep")
-        .about("executes histories on PostgreSQL")
-        .arg(
-            Arg::with_name("hist_dir")
-                .long("dir")
-                .short("d")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("hist_out")
-                .long("out")
-                .short("o")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("ip:port")
-                .help("DB addr")
-                .required(true),
-        )
-        .get_matches();
+// fn main() {
+//     let matches = App::new("PostgreSQL")
+//         .version("1.0")
+//         .author("Ranadeep")
+//         .about("executes histories on PostgreSQL")
+//         .arg(
+//             Arg::with_name("hist_dir")
+//                 .long("dir")
+//                 .short("d")
+//                 .takes_value(true)
+//                 .required(true),
+//         )
+//         .arg(
+//             Arg::with_name("hist_out")
+//                 .long("out")
+//                 .short("o")
+//                 .takes_value(true)
+//                 .required(true),
+//         )
+//         .arg(
+//             Arg::with_name("ip:port")
+//                 .help("DB addr")
+//                 .required(true),
+//         )
+//         .get_matches();
 
-    let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
-    let hist_out = Path::new(matches.value_of("hist_out").unwrap());
+//     let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
+//     let hist_out = Path::new(matches.value_of("hist_out").unwrap());
 
-    fs::create_dir_all(hist_out).expect("couldn't create directory");
+//     fs::create_dir_all(hist_out).expect("couldn't create directory");
 
-    let ips: Vec<_> = matches.values_of("ip:port").unwrap().collect();
+//     let ips: Vec<_> = matches.values_of("ip:port").unwrap().collect();
 
-    let mut cluster = PostgresCluster::new(&ips);
+//     let mut cluster = PostgresCluster::new(&ips);
 
-    cluster.execute_all(hist_dir, hist_out, 100);
-}
+//     cluster.execute_all(hist_dir, hist_out, 100);
+// }

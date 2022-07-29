@@ -1,14 +1,8 @@
-extern crate clap;
-extern crate dbcop;
-extern crate postgres;
-
-extern crate rand;
-
 use std::fs;
 use std::path::Path;
 
-use dbcop::db::cluster::{Cluster, ClusterNode, Node};
-use dbcop::db::history::{HistParams, Transaction};
+use crate::db::cluster::{Cluster, ClusterNode, Node};
+use crate::db::history::{HistParams, Transaction};
 
 use clap::{App, Arg};
 
@@ -44,7 +38,7 @@ impl ClusterNode for YugabyteNode {
             transaction.success = true;
             let mut sqltxn = match conn
                 .build_transaction()
-                .isolation_level(postgres::IsolationLevel::Serializable)
+                .isolation_level(postgres::IsolationLevel::RepeatableRead)
                 .start()
             {
                 Ok(txn) => txn,
@@ -182,41 +176,41 @@ impl Cluster<YugabyteNode> for YugabyteCluster {
     }
 }
 
-fn main() {
-    let matches = App::new("YugabyteDB")
-        .version("1.0")
-        .author("Ranadeep")
-        .about("executes histories on YugaByteDB")
-        .arg(
-            Arg::with_name("hist_dir")
-                .long("dir")
-                .short("d")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("hist_out")
-                .long("out")
-                .short("o")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("ip:port")
-                .help("Cluster addrs")
-                .multiple(true)
-                .required(true),
-        )
-        .get_matches();
+// fn main() {
+//     let matches = App::new("YugabyteDB")
+//         .version("1.0")
+//         .author("Ranadeep")
+//         .about("executes histories on YugaByteDB")
+//         .arg(
+//             Arg::with_name("hist_dir")
+//                 .long("dir")
+//                 .short("d")
+//                 .takes_value(true)
+//                 .required(true),
+//         )
+//         .arg(
+//             Arg::with_name("hist_out")
+//                 .long("out")
+//                 .short("o")
+//                 .takes_value(true)
+//                 .required(true),
+//         )
+//         .arg(
+//             Arg::with_name("ip:port")
+//                 .help("Cluster addrs")
+//                 .multiple(true)
+//                 .required(true),
+//         )
+//         .get_matches();
 
-    let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
-    let hist_out = Path::new(matches.value_of("hist_out").unwrap());
+//     let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
+//     let hist_out = Path::new(matches.value_of("hist_out").unwrap());
 
-    fs::create_dir_all(hist_out).expect("couldn't create directory");
+//     fs::create_dir_all(hist_out).expect("couldn't create directory");
 
-    let ips: Vec<_> = matches.values_of("ip:port").unwrap().collect();
+//     let ips: Vec<_> = matches.values_of("ip:port").unwrap().collect();
 
-    let mut cluster = YugabyteCluster::new(&ips);
+//     let mut cluster = YugabyteCluster::new(&ips);
 
-    cluster.execute_all(hist_dir, hist_out, 100);
-}
+//     cluster.execute_all(hist_dir, hist_out, 100);
+// }

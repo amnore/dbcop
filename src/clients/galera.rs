@@ -1,34 +1,32 @@
-extern crate clap;
-extern crate dbcop;
-extern crate mysql;
-
 use std::path::Path;
 
-use dbcop::db::cluster::{Cluster, ClusterNode, Node};
-use dbcop::db::history::{HistParams, Transaction};
+use crate::db::cluster::{Cluster, ClusterNode, Node};
+use crate::db::history::{HistParams, Transaction};
 
 use std::fs;
 
 use clap::{App, Arg};
 
+use mysql::{Conn, Opts, TxOpts, prelude::Queryable};
+
 #[derive(Debug)]
-pub struct TiDBNode {
+pub struct GaleraNode {
     addr: String,
     id: usize,
 }
 
-impl From<Node> for TiDBNode {
+impl From<Node> for GaleraNode {
     fn from(node: Node) -> Self {
-        TiDBNode {
+        GaleraNode {
             addr: format!("mysql://{}@{}", "root", node.addr),
             id: node.id,
         }
     }
 }
 
-impl ClusterNode for TiDBNode {
+impl ClusterNode for GaleraNode {
     fn exec_session(&self, hist: &mut Vec<Transaction>) {
-        match mysql::Pool::new(self.addr.clone()) {
+        match Conn::new(TxOpts::) {
             Ok(conn) => hist.iter_mut().for_each(|transaction| {
                 for mut sqltxn in conn.start_transaction(
                     true,
@@ -77,7 +75,7 @@ impl ClusterNode for TiDBNode {
                         }
                         Err(_e) => {
                             assert_eq!(transaction.success, false);
-                            // println!("{:?} -- COMMIT ERROR {}", transaction, _e);
+                            println!("{:?} -- COMMIT ERROR {}", transaction, _e);
                         }
                     }
                 }
@@ -93,11 +91,11 @@ impl ClusterNode for TiDBNode {
 }
 
 #[derive(Debug)]
-pub struct TiDBCluster(Vec<Node>);
+pub struct GaleraCluster(Vec<Node>);
 
-impl TiDBCluster {
+impl GaleraCluster {
     fn new(ips: &Vec<&str>) -> Self {
-        TiDBCluster(TiDBCluster::node_vec(ips))
+        GaleraCluster(GaleraCluster::node_vec(ips))
     }
 
     fn create_table(&self) -> bool {
@@ -109,7 +107,6 @@ impl TiDBCluster {
                     pool.prep_exec(
                         "CREATE TABLE IF NOT EXISTS dbcop.variables (var BIGINT(64) UNSIGNED NOT NULL PRIMARY KEY, val BIGINT(64) UNSIGNED NOT NULL)", ()
                     ).unwrap();
-                    pool.prep_exec("SET GLOBAL tidb_txn_mode = 'optimistic'", ()).unwrap();
                     // conn.query("USE dbcop").unwrap();
                     Ok(true)
                 }).expect("problem creating database"),
@@ -148,7 +145,7 @@ impl TiDBCluster {
     }
 }
 
-impl Cluster<TiDBNode> for TiDBCluster {
+impl Cluster<GaleraNode> for GaleraCluster {
     fn n_node(&self) -> usize {
         self.0.len()
     }
@@ -158,7 +155,7 @@ impl Cluster<TiDBNode> for TiDBCluster {
     fn get_node(&self, id: usize) -> Node {
         self.0[id].clone()
     }
-    fn get_cluster_node(&self, id: usize) -> TiDBNode {
+    fn get_cluster_node(&self, id: usize) -> GaleraNode {
         From::from(self.get_node(id))
     }
     fn setup_test(&mut self, p: &HistParams) {
@@ -172,41 +169,41 @@ impl Cluster<TiDBNode> for TiDBCluster {
     }
 }
 
-fn main() {
-    let matches = App::new("TiDB")
-        .version("1.0")
-        .author("Ranadeep")
-        .about("executes histories on TiDB")
-        .arg(
-            Arg::with_name("hist_dir")
-                .long("dir")
-                .short("d")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("hist_out")
-                .long("out")
-                .short("o")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("ips")
-                .help("Cluster ips")
-                .multiple(true)
-                .required(true),
-        )
-        .get_matches();
+// fn main() {
+//     let matches = App::new("Galera")
+//         .version("1.0")
+//         .author("Ranadeep")
+//         .about("executes histories on Galera")
+//         .arg(
+//             Arg::with_name("hist_dir")
+//                 .long("dir")
+//                 .short("d")
+//                 .takes_value(true)
+//                 .required(true),
+//         )
+//         .arg(
+//             Arg::with_name("hist_out")
+//                 .long("out")
+//                 .short("o")
+//                 .takes_value(true)
+//                 .required(true),
+//         )
+//         .arg(
+//             Arg::with_name("ip:port")
+//                 .help("Cluster addrs")
+//                 .multiple(true)
+//                 .required(true),
+//         )
+//         .get_matches();
 
-    let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
-    let hist_out = Path::new(matches.value_of("hist_out").unwrap());
+//     let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
+//     let hist_out = Path::new(matches.value_of("hist_out").unwrap());
 
-    fs::create_dir_all(hist_out).expect("couldn't create directory");
+//     fs::create_dir_all(hist_out).expect("couldn't create directory");
 
-    let ips: Vec<_> = matches.values_of("ips").unwrap().collect();
+//     let ips: Vec<_> = matches.values_of("ip:port").unwrap().collect();
 
-    let mut cluster = TiDBCluster::new(&ips);
+//     let mut cluster = GaleraCluster::new(&ips);
 
-    cluster.execute_all(hist_dir, hist_out, 500);
-}
+//     cluster.execute_all(hist_dir, hist_out, 500);
+// }

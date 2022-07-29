@@ -9,40 +9,47 @@ set -o pipefail
 # READ_PROBABILITY=(0.5)
 # KEY_DISTRIBUTION=("uniform")
 
-# SESSIONS=(25)
-# TXNS_PER_SESSION=(10 20 30 40 50 100 200 300 400 500)
-# OPS_PER_TXN=(20)
+# SESSIONS=(20)
+# TXNS_PER_SESSION=(10 20 30 40 50 100 150 200 250)
+# OPS_PER_TXN=(15)
+# VARIABLES=(10000)
+# READ_PROBABILITY=(0.5)
+# KEY_DISTRIBUTION=("uniform")
+
+# SESSIONS=(20)
+# TXNS_PER_SESSION=(100)
+# OPS_PER_TXN=(5 10 15 20 25 30)
+# VARIABLES=(10000)
+# READ_PROBABILITY=(0.5)
+# KEY_DISTRIBUTION=("uniform")
+
+# SESSIONS=(5 10 15 20 25 30)
+# TXNS_PER_SESSION=(100)
+# OPS_PER_TXN=(15)
 # VARIABLES=(10000)
 # READ_PROBABILITY=(0.5)
 # KEY_DISTRIBUTION=("uniform")
 
 SESSIONS=(20)
 TXNS_PER_SESSION=(100)
-OPS_PER_TXN=(5 10 15 20 25 30)
+OPS_PER_TXN=(15)
 VARIABLES=(10000)
-READ_PROBABILITY=(0.5)
+READ_PROBABILITY=(0 0.25 0.5 0.75 1)
 KEY_DISTRIBUTION=("uniform")
 
-# SESSIONS=(5 10 15 20 25 30 35)
-# TXNS_PER_SESSION=(300)
-# OPS_PER_TXN=(20)
-# VARIABLES=(10000)
-# READ_PROBABILITY=(0.5)
-# KEY_DISTRIBUTION=("uniform")
-
 # SESSIONS=(20)
-# TXNS_PER_SESSION=(150)
-# OPS_PER_TXN=(15)
-# VARIABLES=(10000)
-# READ_PROBABILITY=(0 0.25 0.5 0.75 1)
-# KEY_DISTRIBUTION=("uniform")
-
-# SESSIONS=(20)
-# TXNS_PER_SESSION=(200)
+# TXNS_PER_SESSION=(100)
 # OPS_PER_TXN=(15)
 # VARIABLES=(10000)
 # READ_PROBABILITY=(0.5)
 # KEY_DISTRIBUTION=("uniform" "zipf" "hotspot")
+
+# SESSIONS=(25)
+# TXNS_PER_SESSION=(400)
+# OPS_PER_TXN=(8)
+# VARIABLES=(10000)
+# READ_PROBABILITY=(0.3 0.5 0.95)
+# KEY_DISTRIBUTION=("uniform")
 
 HISTORIES=3
 PARAMS=()
@@ -76,7 +83,7 @@ declare -A AVG_TIME_COBRA_NOGPU=()
 
 # build tools
 cargo build --manifest-path "$GENERATOR_DIR/Cargo.toml" --release
-cargo build --manifest-path "$GENERATOR_DIR/Cargo.toml" --release --example $DB
+# cargo build --manifest-path "$GENERATOR_DIR/Cargo.toml" --release --example $DB
 
 rm -rf $GENERATE_DEST $HIST_DEST $HIST_COBRA_SI_DEST $HIST_COBRA_DEST $COBRA_DEST $COBRA_SI_DEST $COBRA_SI_NOGPU_DEST $COBRA_NOGPU_DEST $DBCOP_DEST $SI_DEST $CSV_DEST
 
@@ -89,7 +96,7 @@ for i in "${SESSIONS[@]}"; do
           for n in "${KEY_DISTRIBUTION[@]}"; do
             PARAMS+=("${i}_${j}_${k}_${l}_${m}_${n}")
             mkdir -p "$GENERATE_DEST/${i}_${j}_${k}_${l}_${m}_${n}"
-            "$GENERATOR_DIR/target/release/dbcop" generate -d "/tmp/generate/${i}_${j}_${k}_${l}_${m}_${n}" -h $HISTORIES -n $i -t $j -e $k -v $l --readp $m --key_distrib $n
+            "$GENERATOR_DIR/target/release/dbcop" generate -d "/tmp/generate/${i}_${j}_${k}_${l}_${m}_${n}" --nhist $HISTORIES -n $i -t $j -e $k -v $l --readp $m --key_distrib $n
           done
         done
       done
@@ -100,7 +107,7 @@ done
 # run operations to get history
 for p in "${PARAMS[@]}"; do
   mkdir -p "$HIST_DEST/$p"
-  "$GENERATOR_DIR/target/release/examples/$DB" $ADDR --dir "/tmp/generate/$p" --out "$HIST_DEST/$p" >/dev/null
+  "$GENERATOR_DIR/target/release/dbcop" run $ADDR --db $DB --dir "/tmp/generate/$p" --out "$HIST_DEST/$p" >/dev/null
 done
 
 # verify with si

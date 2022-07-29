@@ -1,35 +1,29 @@
-extern crate clap;
-extern crate dbcop;
-extern crate postgres;
-
-extern crate rand;
-
 use std::fs;
 use std::path::Path;
 
-use dbcop::db::cluster::{Cluster, ClusterNode, Node};
-use dbcop::db::history::{HistParams, Transaction};
+use crate::db::cluster::{Cluster, ClusterNode, Node};
+use crate::db::history::{HistParams, Transaction};
 
 use clap::{App, Arg};
 
 use postgres::{Client, NoTls};
 
 #[derive(Debug)]
-pub struct PostgresNode {
+pub struct YugabyteNode {
     addr: String,
     id: usize,
 }
 
-impl From<Node> for PostgresNode {
+impl From<Node> for YugabyteNode {
     fn from(node: Node) -> Self {
-        PostgresNode {
-            addr: format!("postgresql://{}:{}@{}", "postgres", "postgres", node.addr),
+        YugabyteNode {
+            addr: format!("postgresql://{}:{}@{}", "yugabyte", "yugabyte", node.addr),
             id: node.id,
         }
     }
 }
 
-impl ClusterNode for PostgresNode {
+impl ClusterNode for YugabyteNode {
     fn exec_session(&self, hist: &mut Vec<Transaction>) {
         let mut conn = match Client::connect(self.addr.as_str(), NoTls) {
             Ok(conn) => conn,
@@ -65,7 +59,7 @@ impl ClusterNode for PostgresNode {
                         Err(e) => {
                             // If an operation fails, then the whole transaction fails
                             transaction.success = false;
-                            println!("WRITE ERR -- {:?}", e);
+                            // println!("WRITE ERR -- {:?}", e);
                             break;
                         }
                     }
@@ -82,7 +76,7 @@ impl ClusterNode for PostgresNode {
                         }
                         Err(e) => {
                             transaction.success = false;
-                            println!("READ ERR -- {:?}", e);
+                            // println!("READ ERR -- {:?}", e);
                             break;
                         }
                     }
@@ -100,11 +94,11 @@ impl ClusterNode for PostgresNode {
 }
 
 #[derive(Debug)]
-pub struct PostgresCluster(Vec<Node>);
+pub struct YugabyteCluster(Vec<Node>);
 
-impl PostgresCluster {
+impl YugabyteCluster {
     fn new(ips: &Vec<&str>) -> Self {
-        PostgresCluster(PostgresCluster::node_vec(ips))
+        YugabyteCluster(YugabyteCluster::node_vec(ips))
     }
 
     fn create_table(&self) -> bool {
@@ -113,11 +107,8 @@ impl PostgresCluster {
                 .and_then(|mut pool| {
                     pool.execute("CREATE SCHEMA IF NOT EXISTS dbcop",  &[]).unwrap();
                     pool.execute("DROP TABLE IF EXISTS dbcop.variables",  &[]).unwrap();
-                    pool.batch_execute(
-                        "CREATE TABLE IF NOT EXISTS dbcop.variables (var INT8 NOT NULL PRIMARY KEY, val INT8 NOT NULL) PARTITION BY HASH (var);
-                         CREATE TABLE IF NOT EXISTS dbcop.variables_0 PARTITION OF dbcop.variables FOR VALUES WITH (modulus 3, remainder 0);
-                         CREATE TABLE IF NOT EXISTS dbcop.variables_1 PARTITION OF dbcop.variables FOR VALUES WITH (modulus 3, remainder 1);
-                         CREATE TABLE IF NOT EXISTS dbcop.variables_2 PARTITION OF dbcop.variables FOR VALUES WITH (modulus 3, remainder 2);"
+                    pool.execute(
+                        "CREATE TABLE IF NOT EXISTS dbcop.variables (var INT8 NOT NULL PRIMARY KEY, val INT8 NOT NULL)", &[]
                     ).unwrap();
                     // conn.query("USE dbcop").unwrap();
                     Ok(true)
@@ -154,14 +145,14 @@ impl PostgresCluster {
         match self.0.get(i) {
             Some(ref node) => Some(format!(
                 "postgresql://{}:{}@{}",
-                "postgres", "postgres", node.addr
+                "yugabyte", "yugabyte", node.addr
             )),
             None => None,
         }
     }
 }
 
-impl Cluster<PostgresNode> for PostgresCluster {
+impl Cluster<YugabyteNode> for YugabyteCluster {
     fn n_node(&self) -> usize {
         self.0.len()
     }
@@ -171,7 +162,7 @@ impl Cluster<PostgresNode> for PostgresCluster {
     fn get_node(&self, id: usize) -> Node {
         self.0[id].clone()
     }
-    fn get_cluster_node(&self, id: usize) -> PostgresNode {
+    fn get_cluster_node(&self, id: usize) -> YugabyteNode {
         From::from(self.get_node(id))
     }
     fn setup_test(&mut self, p: &HistParams) {
@@ -181,44 +172,45 @@ impl Cluster<PostgresNode> for PostgresCluster {
         self.drop_database();
     }
     fn info(&self) -> String {
-        "PostgreSQL".to_string()
+        "YugabyteDB".to_string()
     }
 }
 
-fn main() {
-    let matches = App::new("PostgreSQL")
-        .version("1.0")
-        .author("Ranadeep")
-        .about("executes histories on PostgreSQL")
-        .arg(
-            Arg::with_name("hist_dir")
-                .long("dir")
-                .short("d")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("hist_out")
-                .long("out")
-                .short("o")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("ip:port")
-                .help("DB addr")
-                .required(true),
-        )
-        .get_matches();
+// fn main() {
+//     let matches = App::new("YugabyteDB")
+//         .version("1.0")
+//         .author("Ranadeep")
+//         .about("executes histories on YugaByteDB")
+//         .arg(
+//             Arg::with_name("hist_dir")
+//                 .long("dir")
+//                 .short("d")
+//                 .takes_value(true)
+//                 .required(true),
+//         )
+//         .arg(
+//             Arg::with_name("hist_out")
+//                 .long("out")
+//                 .short("o")
+//                 .takes_value(true)
+//                 .required(true),
+//         )
+//         .arg(
+//             Arg::with_name("ip:port")
+//                 .help("Cluster addrs")
+//                 .multiple(true)
+//                 .required(true),
+//         )
+//         .get_matches();
 
-    let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
-    let hist_out = Path::new(matches.value_of("hist_out").unwrap());
+//     let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
+//     let hist_out = Path::new(matches.value_of("hist_out").unwrap());
 
-    fs::create_dir_all(hist_out).expect("couldn't create directory");
+//     fs::create_dir_all(hist_out).expect("couldn't create directory");
 
-    let ips: Vec<_> = matches.values_of("ip:port").unwrap().collect();
+//     let ips: Vec<_> = matches.values_of("ip:port").unwrap().collect();
 
-    let mut cluster = PostgresCluster::new(&ips);
+//     let mut cluster = YugabyteCluster::new(&ips);
 
-    cluster.execute_all(hist_dir, hist_out, 100);
-}
+//     cluster.execute_all(hist_dir, hist_out, 100);
+// }
