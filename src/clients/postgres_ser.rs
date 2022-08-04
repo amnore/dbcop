@@ -1,5 +1,8 @@
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
+use std::thread::spawn;
+use std::io::Write;
 
 use crate::db::cluster::{Cluster, ClusterNode, Node};
 use crate::db::history::{HistParams, Transaction};
@@ -8,23 +11,28 @@ use clap::{App, Arg};
 
 use postgres::{Client, NoTls};
 
+use indicatif::{MultiProgress, ProgressBar};
+
 #[derive(Debug)]
 pub struct PostgresNode {
     addr: String,
     id: usize,
+    progress: Arc<MultiProgress>,
 }
 
-impl From<Node> for PostgresNode {
-    fn from(node: Node) -> Self {
+impl PostgresNode {
+    fn new(node: Node, cluster: &PostgresCluster) -> Self {
         PostgresNode {
             addr: format!("postgresql://{}:{}@{}", "postgres", "postgres", node.addr),
             id: node.id,
+            progress: cluster.1.clone(),
         }
     }
 }
 
 impl ClusterNode for PostgresNode {
     fn exec_session(&self, hist: &mut Vec<Transaction>) {
+        let progress = self.progress.add(ProgressBar::new(hist.len() as u64));
         let mut conn = match Client::connect(self.addr.as_str(), NoTls) {
             Ok(conn) => conn,
             Err(e) => {
@@ -34,71 +42,74 @@ impl ClusterNode for PostgresNode {
             }
         };
 
-        for transaction in hist.iter_mut() {
-            transaction.success = true;
-            let mut sqltxn = match conn
-                .build_transaction()
-                .isolation_level(postgres::IsolationLevel::Serializable)
-                .start()
-            {
-                Ok(txn) => txn,
-                Err(e) => {
-                    println!("{:?} - TRANSACTION ERROR", e);
-                    transaction.success = false;
-                    continue;
-                }
-            };
+        for transaction in progress.wrap_iter(hist.iter_mut()) {
+            while !transaction.success {
+                transaction.success = true;
+                let mut sqltxn = match conn
+                    .build_transaction()
+                    .isolation_level(postgres::IsolationLevel::Serializable)
+                    .start()
+                    {
+                        Ok(txn) => txn,
+                        Err(e) => {
+                            println!("{:?} - TRANSACTION ERROR", e);
+                            transaction.success = false;
+                            continue;
+                        }
+                    };
 
-            for event in transaction.events.iter_mut() {
-                if event.write {
-                    match sqltxn.execute(
-                        "UPDATE dbcop.variables SET val=$1 WHERE var=$2",
-                        &[&(event.value as i64), &(event.variable as i64)],
-                    ) {
-                        Ok(_) => event.success = true,
-                        Err(e) => {
-                            // If an operation fails, then the whole transaction fails
-                            transaction.success = false;
-                            println!("WRITE ERR -- {:?}", e);
-                            break;
+                for event in transaction.events.iter_mut() {
+                    if event.write {
+                        match sqltxn.execute(
+                            "UPDATE dbcop.variables SET val=$1 WHERE var=$2",
+                            &[&(event.value as i64), &(event.variable as i64)],
+                        ) {
+                            Ok(_) => event.success = true,
+                            Err(e) => {
+                                // If an operation fails, then the whole transaction fails
+                                transaction.success = false;
+                                // eprintln!("WRITE ERR -- {:?}", e);
+                                break;
+                            }
                         }
-                    }
-                } else {
-                    match sqltxn.query(
-                        "SELECT * FROM dbcop.variables WHERE var=$1",
-                        &[&(event.variable as i64)],
-                    ) {
-                        Ok(result) => {
-                            let row = result.get(0);
-                            let value: i64 = row.unwrap().get("val");
-                            event.value = value as usize;
-                            event.success = true;
-                        }
-                        Err(e) => {
-                            transaction.success = false;
-                            println!("READ ERR -- {:?}", e);
-                            break;
+                    } else {
+                        match sqltxn.query(
+                            "SELECT * FROM dbcop.variables WHERE var=$1",
+                            &[&(event.variable as i64)],
+                        ) {
+                            Ok(result) => {
+                                let row = result.get(0);
+                                let value: i64 = row.unwrap().get("val");
+                                event.value = value as usize;
+                                event.success = true;
+                            }
+                            Err(e) => {
+                                transaction.success = false;
+                                // eprintln!("READ ERR -- {:?}", e);
+                                break;
+                            }
                         }
                     }
                 }
+
+                transaction.success &= match sqltxn.commit() {
+                    Ok(_) => true,
+                    Err(e) => {
+                        // eprintln!("COMMIT ERR -- {:?}", e);
+                        false
+                    }
+                };
             }
-
-            transaction.success &= if let Err(e) = sqltxn.commit() {
-                println!("{:?} -- COMMIT ERROR {}", transaction, e);
-                false
-            } else {
-                true
-            };
         }
     }
 }
 
 #[derive(Debug)]
-pub struct PostgresCluster(Vec<Node>);
+pub struct PostgresCluster(Vec<Node>, Arc<MultiProgress>);
 
 impl PostgresCluster {
-    fn new(ips: &Vec<&str>) -> Self {
-        PostgresCluster(PostgresCluster::node_vec(ips))
+    pub fn new(ips: &Vec<&str>) -> Self {
+        PostgresCluster(PostgresCluster::node_vec(ips), Arc::new(MultiProgress::new()))
     }
 
     fn create_table(&self) -> bool {
@@ -123,15 +134,18 @@ impl PostgresCluster {
     fn create_variables(&self, n_variable: usize) {
         if let Some(ip) = self.get_postgresql_addr(0) {
             if let Ok(mut conn) = Client::connect(ip.as_str(), NoTls) {
-                for stmt in conn
-                    .prepare("INSERT INTO dbcop.variables (var, val) values ($1, 0)")
-                    .into_iter()
-                {
-                    (0..n_variable).for_each(|variable| {
-                        conn.execute(&stmt, &[&(variable as i64)])
-                            .expect("Cannot create variable");
-                    });
-                }
+                let mut writer = conn.copy_in("COPY dbcop.variables FROM STDIN").unwrap();
+                (0..n_variable).for_each(|var| writer.write_all(format!("{}\t{}\n", var, 0).as_bytes()).unwrap());
+                writer.finish().unwrap();
+                // for stmt in conn
+                    // .prepare("INSERT INTO dbcop.variables (var, val) values ($1, 0)")
+                    // .into_iter()
+                // {
+                    // (0..n_variable).for_each(|variable| {
+                        // conn.execute(&stmt, &[&(variable as i64)])
+                            // .expect("Cannot create variable");
+                    // });
+                // }
             }
         }
     }
@@ -166,10 +180,13 @@ impl Cluster<PostgresNode> for PostgresCluster {
         self.0[id].clone()
     }
     fn get_cluster_node(&self, id: usize) -> PostgresNode {
-        From::from(self.get_node(id))
+        PostgresNode::new(self.get_node(id), self)
     }
     fn setup_test(&mut self, p: &HistParams) {
         self.create_variables(p.get_n_variable());
+
+        let progress = self.1.clone();
+        spawn(move || progress.join());
     }
     fn cleanup(&self) {
         self.drop_database();

@@ -2,7 +2,7 @@ mod clients;
 mod db;
 
 use clap::{App, AppSettings, Arg, SubCommand};
-use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster};
+use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster, PostgresSERCluster};
 use db::cluster::{Cluster, ClusterNode};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -143,7 +143,7 @@ fn main() {
                     Arg::with_name("database")
                         .long("db")
                         .takes_value(true)
-                        .possible_values(["memgraph", "postgres"])
+                        .possible_values(["memgraph", "postgres", "postgres_ser"])
                         .required(true),
                 ),
         ])
@@ -215,6 +215,7 @@ fn main() {
             let mut cluster: Box<dyn Cluster<DynNode>> = match matches.value_of("database") {
                 Some("memgraph") => Box::new(DynCluster::new(MemgraphCluster::new(&ips))),
                 Some("postgres") => Box::new(DynCluster::new(PostgresCluster::new(&ips))),
+                Some("postgres_ser") => Box::new(DynCluster::new(PostgresSERCluster::new(&ips))),
                 _ => unreachable!(),
             };
 
