@@ -88,7 +88,7 @@ query all($a: int) {
 pub struct DGraphCluster(Vec<Node>);
 
 impl DGraphCluster {
-    fn new(ips: &Vec<&str>) -> Self {
+    pub fn new(ips: &Vec<&str>) -> Self {
         DGraphCluster(DGraphCluster::node_vec(ips))
     }
 

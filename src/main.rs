@@ -2,7 +2,7 @@ mod clients;
 mod db;
 
 use clap::{App, AppSettings, Arg, SubCommand};
-use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster, PostgresSERCluster};
+use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster, PostgresSERCluster, DGraphCluster};
 use db::cluster::{Cluster, ClusterNode};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -58,14 +58,13 @@ fn main() {
                         .long("gen_dir")
                         .short('d')
                         .takes_value(true)
-                        .required(true)
                         .help("Directory to generate histories"),
                 )
                 .arg(
                     Arg::with_name("n_history")
                         .long("nhist")
-                        .required(true)
                         .takes_value(true)
+                        .default_value("1")
                         .help("Number of histories to generate"),
                 )
                 .arg(
@@ -103,15 +102,15 @@ fn main() {
                 .arg(
                     Arg::with_name("read_probability")
                         .long("readp")
-                        .required(true)
                         .takes_value(true)
+                        .default_value("0.5")
                         .help("Probability for an event to be a read"),
                 )
                 .arg(
                     Arg::with_name("key_distribution")
                         .long("key_distrib")
-                        .required(true)
                         .takes_value(true)
+                        .default_value("uniform")
                         .possible_values(["uniform", "zipf", "hotspot"])
                         .help("Key access distribution"),
                 )
@@ -143,7 +142,7 @@ fn main() {
                     Arg::with_name("database")
                         .long("db")
                         .takes_value(true)
-                        .possible_values(["memgraph", "postgres", "postgres_ser"])
+                        .possible_values(["memgraph", "postgres", "postgres_ser", "dgraph"])
                         .required(true),
                 ),
         ])
@@ -216,6 +215,7 @@ fn main() {
                 Some("memgraph") => Box::new(DynCluster::new(MemgraphCluster::new(&ips))),
                 Some("postgres") => Box::new(DynCluster::new(PostgresCluster::new(&ips))),
                 Some("postgres_ser") => Box::new(DynCluster::new(PostgresSERCluster::new(&ips))),
+                Some("dgraph") => Box::new(DynCluster::new(DGraphCluster::new(&ips))),
                 _ => unreachable!(),
             };
 
