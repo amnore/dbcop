@@ -9,6 +9,7 @@ DATASETS=()
 for hist in $(ls $HIST_DEST); do
   DATASETS+=($hist)
 done
+DATASETS=("tpcc-10000")
 
 SI_DEST=/tmp/si/
 SI_NO_COALESCING_DEST=/tmp/si-no-coalescing/
@@ -27,40 +28,40 @@ rm -rf $SI_DEST $SI_NO_COALESCING_DEST $SI_NO_PRUNING_DEST $SI_NO_PRUNING_COALES
 mkdir -p $SI_DEST $SI_NO_COALESCING_DEST $SI_NO_PRUNING_DEST $SI_NO_PRUNING_COALESCING_DEST $CSV_DEST
 
 # verify with si
-for p in "${DATASETS[@]}"; do
-  hist="$HIST_DEST/$p" 
-  timeout 180 java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" audit "$hist" &> "${hist/$HIST_DEST/$SI_DEST}" || true
-done
+#for p in "${DATASETS[@]}"; do
+#  hist="$HIST_DEST/$p" 
+#  timeout 180 java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" audit "$hist" &> "${hist/$HIST_DEST/$SI_DEST}" || true
+#done
 
 # verify with si (no coalescing)
-for p in "${DATASETS[@]}"; do
-  hist="$HIST_DEST/$p" 
-  timeout 180 java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" audit --no-coalescing "$hist" &> "${hist/$HIST_DEST/$SI_NO_COALESCING_DEST}" || true
-done
+#for p in "${DATASETS[@]}"; do
+#  hist="$HIST_DEST/$p" 
+#  timeout 180 java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" audit --no-coalescing "$hist" &> "${hist/$HIST_DEST/$SI_NO_COALESCING_DEST}" || true
+#done
 
 # verify with si (no pruning, coalescing)
 for p in "${DATASETS[@]}"; do
   hist="$HIST_DEST/$p" 
-  timeout 180 java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" audit --no-pruning --no-coalescing "$hist" &> "${hist/$HIST_DEST/$SI_NO_PRUNING_COALESCING_DEST}" || true
+  timeout 1800 java -Xmx8g -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" audit --no-pruning --no-coalescing "$hist" &> "${hist/$HIST_DEST/$SI_NO_PRUNING_COALESCING_DEST}" || true
 done
 
 # verify with si (no pruning)
 for p in "${DATASETS[@]}"; do
   hist="$HIST_DEST/$p" 
-  timeout 180 java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" audit --no-pruning "$hist" &> "${hist/$HIST_DEST/$SI_NO_PRUNING_DEST}" || true
+  timeout 1800 java -Xmx8g -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" audit --no-pruning "$hist" &> "${hist/$HIST_DEST/$SI_NO_PRUNING_DEST}" || true
 done
 
 # compute average time
 for p in "${DATASETS[@]}"; do
-  time=()
-  hist="$SI_DEST/$p" 
-  n="$(cat $hist | sed -nE 's/^ENTIRE_EXPERIMENT: ([[:digit:]]+)ms$/\1/p')"
-  if [ -n "$n" ]; then
-    time+=("$(bc <<<"scale=4; $n / 1000")")
-  else
-    time+=(180)
-  fi
-  AVG_TIME_SI[$p]="$(IFS='+'; echo "scale=4; (${time[*]}) / ${#time[@]}" | bc)"
+#  time=()
+#  hist="$SI_DEST/$p" 
+#  n="$(cat $hist | sed -nE 's/^ENTIRE_EXPERIMENT: ([[:digit:]]+)ms$/\1/p')"
+#  if [ -n "$n" ]; then
+#    time+=("$(bc <<<"scale=4; $n / 1000")")
+#  else
+#    time+=(180)
+#  fi
+#  AVG_TIME_SI[$p]="$(IFS='+'; echo "scale=4; (${time[*]}) / ${#time[@]}" | bc)"
 
   time=()
   hist="$SI_NO_PRUNING_DEST/$p" 
@@ -72,15 +73,15 @@ for p in "${DATASETS[@]}"; do
   fi
   AVG_TIME_SI_NO_PRUNING[$p]="$(IFS='+'; echo "scale=4; (${time[*]}) / ${#time[@]}" | bc)"
 
-  time=()
-  hist="$SI_NO_COALESCING_DEST/$p" 
-  n="$(cat $hist | sed -nE 's/^ENTIRE_EXPERIMENT: ([[:digit:]]+)ms$/\1/p')"
-  if [ -n "$n" ]; then
-    time+=("$(bc <<<"scale=4; $n / 1000")")
-  else
-    time+=(180)
-  fi
-  AVG_TIME_SI_NO_COALESCING[$p]="$(IFS='+'; echo "scale=4; (${time[*]}) / ${#time[@]}" | bc)"
+#  time=()
+#  hist="$SI_NO_COALESCING_DEST/$p" 
+#  n="$(cat $hist | sed -nE 's/^ENTIRE_EXPERIMENT: ([[:digit:]]+)ms$/\1/p')"
+#  if [ -n "$n" ]; then
+#    time+=("$(bc <<<"scale=4; $n / 1000")")
+#  else
+#    time+=(180)
+#  fi
+#  AVG_TIME_SI_NO_COALESCING[$p]="$(IFS='+'; echo "scale=4; (${time[*]}) / ${#time[@]}" | bc)"
 
   time=()
   hist="$SI_NO_PRUNING_COALESCING_DEST/$p" 

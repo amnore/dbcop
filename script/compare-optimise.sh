@@ -35,7 +35,7 @@ declare -A AVG_TIME_SI_NO_PRUNING_COALESCING=()
 cargo build --manifest-path "$GENERATOR_DIR/Cargo.toml" --release
 # cargo build --manifest-path "$GENERATOR_DIR/Cargo.toml" --release --example $DB
 
-rm -rf $GENERATE_DEST $HIST_DEST $SI_DEST $SI_NO_COALESCING_DEST $SI_NO_PRUNING_DEST $SI_NO_PRUNING_COALESCING_DEST $CSV_DEST
+#rm -rf $GENERATE_DEST $HIST_DEST $SI_DEST $SI_NO_COALESCING_DEST $SI_NO_PRUNING_DEST $SI_NO_PRUNING_COALESCING_DEST $CSV_DEST
 
 # generate operations
 for i in "${SESSIONS[@]}"; do
@@ -45,8 +45,8 @@ for i in "${SESSIONS[@]}"; do
         for m in "${READ_PROBABILITY[@]}"; do
           for n in "${KEY_DISTRIBUTION[@]}"; do
             PARAMS+=("${i}_${j}_${k}_${l}_${m}_${n}")
-            mkdir -p "$GENERATE_DEST/${i}_${j}_${k}_${l}_${m}_${n}"
-            "$GENERATOR_DIR/target/release/dbcop" generate -d "/tmp/generate/${i}_${j}_${k}_${l}_${m}_${n}" --nhist $HISTORIES -n $i -t $j -e $k -v $l --readp $m --key_distrib $n
+#            mkdir -p "$GENERATE_DEST/${i}_${j}_${k}_${l}_${m}_${n}"
+#            "$GENERATOR_DIR/target/release/dbcop" generate -d "/tmp/generate/${i}_${j}_${k}_${l}_${m}_${n}" --nhist $HISTORIES -n $i -t $j -e $k -v $l --readp $m --key_distrib $n
           done
         done
       done
@@ -57,16 +57,16 @@ done
 # run operations to get history
 for p in "${PARAMS[@]}"; do
   mkdir -p "$HIST_DEST/$p"
-  "$GENERATOR_DIR/target/release/dbcop" run $ADDR --db $DB --dir "/tmp/generate/$p" --out "$HIST_DEST/$p" >/dev/null
+#  "$GENERATOR_DIR/target/release/dbcop" run $ADDR --db $DB --dir "/tmp/generate/$p" --out "$HIST_DEST/$p" >/dev/null
 done
 
 # verify with si
-for p in "${PARAMS[@]}"; do
-  mkdir -p "$SI_DEST/$p"
-  for hist in $(find "$HIST_DEST/$p" -name "hist-*"); do
-    timeout 180 java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" audit -t dbcop "$hist/history.bincode" &> "${hist/$HIST_DEST/$SI_DEST}" || true
-  done
-done
+#for p in "${PARAMS[@]}"; do
+#  mkdir -p "$SI_DEST/$p"
+#  for hist in $(find "$HIST_DEST/$p" -name "hist-*"); do
+#    timeout 180 java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" audit -t dbcop "$hist/history.bincode" &> "${hist/$HIST_DEST/$SI_DEST}" || true
+#  done
+#done
 
 # verify with si (no pruning)
 for p in "${PARAMS[@]}"; do
@@ -77,12 +77,12 @@ for p in "${PARAMS[@]}"; do
 done
 
 # verify with si (no coalescing)
-for p in "${PARAMS[@]}"; do
-  mkdir -p "$SI_NO_COALESCING_DEST/$p"
-  for hist in $(find "$HIST_DEST/$p" -name "hist-*"); do
-    timeout 180 java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" audit -t dbcop --no-coalescing "$hist/history.bincode" &> "${hist/$HIST_DEST/$SI_NO_COALESCING_DEST}" || true
-  done
-done
+#for p in "${PARAMS[@]}"; do
+#  mkdir -p "$SI_NO_COALESCING_DEST/$p"
+#  for hist in $(find "$HIST_DEST/$p" -name "hist-*"); do
+#    timeout 180 java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" audit -t dbcop --no-coalescing "$hist/history.bincode" &> "${hist/$HIST_DEST/$SI_NO_COALESCING_DEST}" || true
+#  done
+#done
 
 # verify with si (no pruning, coalescing)
 for p in "${PARAMS[@]}"; do
