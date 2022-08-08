@@ -59,16 +59,8 @@ impl ClusterNode for DGraphNode {
                     txn.mutate(mu).unwrap();
                     event.success = true;
                 } else {
-                    let query = r#"
-query all($a: int) {
-    all(func: uid($a)) {
-        uid,
-        val
-    }
-}
-"#;
-                    let result = txn.query_with_vars(query, HashMap::from([("$a", (event.variable + 1).to_string())])).unwrap();
-                    let all: All = result.try_into().unwrap();
+                    let result = txn.query(format!("query {{ all(func: uid({})) {{ uid, val }} }}", event.variable + 1));
+                    let all: All = result.unwrap().try_into().unwrap();
                     event.value = all.all[0].val as usize;
                     event.success = true;
                 }
