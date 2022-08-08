@@ -11,7 +11,7 @@ services:
       - --my=zero:5080
       - --v=3
     logging:
-      driver: k8s-file
+      driver: json-file
   alpha:
     image: dgraph/dgraph:latest
     ports:
@@ -25,4 +25,4 @@ services:
       - --security=whitelist=0.0.0.0/0
       - --v=3
     logging:
-      driver: k8s-file
+      driver: json-file
