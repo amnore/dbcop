@@ -49,29 +49,31 @@ impl ClusterNode for DGraphNode {
         let client = Client::new(format!("http://{}", self.addr)).unwrap();
 
         for transaction in hist.iter_mut() {
-            transaction.success = true;
-            let mut txn = client.new_mutated_txn();
+            while !transaction.success {
+                let mut txn = client.new_mutated_txn();
 
-            for event in transaction.events.iter_mut() {
-                if event.write {
-                    let mut mu = Mutation::new();
-                    mu.set_set_json(&KeyValuePair { uid: (event.variable + 1).to_string(), val: event.value }).expect("set_set_json");
-                    txn.mutate(mu).unwrap();
-                    event.success = true;
-                } else {
-                    let result = txn.query(format!("query {{ all(func: uid({})) {{ uid, val }} }}", event.variable + 1));
-                    let all: All = result.unwrap().try_into().unwrap();
-                    event.value = all.all[0].val as usize;
-                    event.success = true;
+                for event in transaction.events.iter_mut() {
+                    if event.write {
+                        let mut mu = Mutation::new();
+                        mu.set_set_json(&KeyValuePair { uid: (event.variable + 1).to_string(), val: event.value }).expect("set_set_json");
+                        txn.mutate(mu).unwrap();
+                        event.success = true;
+                    } else {
+                        let result = txn.query(format!("query {{ all(func: uid({})) {{ uid, val }} }}", event.variable + 1));
+                        let all: All = result.unwrap().try_into().unwrap();
+                        event.value = all.all[0].val as usize;
+                        event.success = true;
+                    }
                 }
-            }
 
-            transaction.success &= if let Err(e) = txn.commit() {
-                // println!("{:?} -- COMMIT ERROR {}", transaction, e.root_cause());
-                false
-            } else {
-                true
-            };
+                transaction.success = match txn.commit() {
+                    Ok(_) => true,
+                    Err(_e) => {
+                        // println!("{:?} -- COMMIT ERROR {}", transaction, _e.root_cause());
+                        false
+                    },
+                };
+            }
         }
     }
 }
