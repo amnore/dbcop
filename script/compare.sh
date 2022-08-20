@@ -70,7 +70,7 @@ DB=postgres
 ADDR=127.0.0.1:5432
 
 COBRA_DIR="$HOME/Source/CobraVerifier"
-SI_DIR="$HOME/Source/CobraVerifier"
+SI_DIR="$HOME/Source/PolySI"
 DBCOP_DIR="$HOME/Source/dbcop"
 GENERATOR_DIR="$HOME/Source/generator"
 
@@ -85,7 +85,7 @@ declare -A AVG_TIME_COBRA_NOGPU=()
 cargo build --manifest-path "$GENERATOR_DIR/Cargo.toml" --release
 # cargo build --manifest-path "$GENERATOR_DIR/Cargo.toml" --release --example $DB
 
-rm -rf $GENERATE_DEST $HIST_DEST $HIST_COBRA_SI_DEST $HIST_COBRA_DEST $COBRA_DEST $COBRA_SI_DEST $COBRA_SI_NOGPU_DEST $COBRA_NOGPU_DEST $DBCOP_DEST $SI_DEST $CSV_DEST
+# rm -rf $GENERATE_DEST $HIST_DEST $HIST_COBRA_SI_DEST $HIST_COBRA_DEST $COBRA_DEST $COBRA_SI_DEST $COBRA_SI_NOGPU_DEST $COBRA_NOGPU_DEST $DBCOP_DEST $SI_DEST $CSV_DEST
 
 # generate operations
 for i in "${SESSIONS[@]}"; do
@@ -114,7 +114,7 @@ done
 for p in "${PARAMS[@]}"; do
   mkdir -p "$SI_DEST/$p"
   for hist in $(find "$HIST_DEST/$p" -name "hist-*"); do
-    java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" audit -t dbcop "$hist/history.bincode" &> "${hist/$HIST_DEST/$SI_DEST}"
+    java -jar "$SI_DIR/build/libs/PolySI-1.0.0-SNAPSHOT.jar" audit -t dbcop "$hist/history.bincode" &> "${hist/$HIST_DEST/$SI_DEST}"
   done
 done
 
@@ -124,7 +124,7 @@ for p in "${PARAMS[@]}"; do
   for hist in $(find "$HIST_DEST/$p" -name "hist-*"); do
     SI2SER_HIST="${hist/$HIST_DEST/$HIST_COBRA_SI_DEST}"
     mkdir -p $SI2SER_HIST
-    java -jar "$SI_DIR/build/libs/CobraVerifier-0.0.1-SNAPSHOT.jar" convert -f dbcop -o cobra -t si2ser $hist/history.bincode $SI2SER_HIST
+    java -jar "$SI_DIR/build/libs/PolySI-1.0.0-SNAPSHOT.jar" convert -f dbcop -o cobra -t si2ser $hist/history.bincode $SI2SER_HIST
     timeout 180 java "-Djava.library.path=$COBRA_DIR/include/:$COBRA_DIR/build/monosat" -jar "$COBRA_DIR/target/CobraVerifier-0.0.1-SNAPSHOT-jar-with-dependencies.jar" mono audit "$HOME/Source/CobraVerifier/cobra.conf.default" $SI2SER_HIST &> "${hist/$HIST_DEST/$COBRA_SI_DEST}" || true
   done
 done

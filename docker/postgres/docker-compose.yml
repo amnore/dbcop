@@ -8,3 +8,5 @@ services:
     environment:
       POSTGRES_PASSWORD: postgres
       PGDATA: /var/lib/postgresql/data/db
+    volumes:
+      - /var/run/postgresql
