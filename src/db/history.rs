@@ -168,8 +168,8 @@ pub fn generate_single_history(
         // let j = std::cmp::min((i_node + 1) * jump, n_variable);
         // let write_variable_range = Uniform::from(i..j);
         (0..n_transaction).map(|_| Transaction {
-            events: (0..n_event).map(|_| {
-                if read_distribution.sample(&mut random_generator) {
+            events: (0..n_event).map(|x| {
+                if x == 0 {
                     let variable = key_distribution.sample(&mut random_generator);
                     Event::read(variable)
                 } else {
