@@ -8,7 +8,11 @@ services:
       - ALLOW_EMPTY_PASSWORD=yes
     ports:
       - 127.0.0.1:3306:3306
-  galera1:
+    volumes:
+      - ./my_custom.cnf:/opt/bitnami/mariadb/conf/my_custom.cnf
+    logging:
+      driver: json-file
+  galera1: &galera
     image: bitnami/mariadb-galera
     environment:
       - ALLOW_EMPTY_PASSWORD=yes
@@ -18,41 +22,9 @@ services:
     entrypoint: 
       - "sh"
       - "-c"
-      - "sleep 10 && /opt/bitnami/scripts/mariadb-galera/entrypoint.sh '/opt/bitnami/scripts/mariadb-galera/run.sh'"
+      - "sleep 10 && exec /opt/bitnami/scripts/mariadb-galera/entrypoint.sh /opt/bitnami/scripts/mariadb-galera/run.sh"
+    volumes:
+      - ./my_custom.cnf:/opt/bitnami/mariadb/conf/my_custom.cnf
     depends_on: galera0
-  galera2:
-    image: bitnami/mariadb-galera
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
-      - MARIADB_GALERA_CLUSTER_ADDRESS=gcomm://galera0:4567,0.0.0.0:4567
-    ports:
-      - 127.0.0.1:3308:3306
-    entrypoint: 
-      - "sh"
-      - "-c"
-      - "sleep 10 && /opt/bitnami/scripts/mariadb-galera/entrypoint.sh '/opt/bitnami/scripts/mariadb-galera/run.sh'"
-    depends_on: galera0
-  galera3:
-    image: bitnami/mariadb-galera
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
-      - MARIADB_GALERA_CLUSTER_ADDRESS=gcomm://galera0:4567,0.0.0.0:4567
-    ports:
-      - 127.0.0.1:3309:3306
-    entrypoint: 
-      - "sh"
-      - "-c"
-      - "sleep 10 && /opt/bitnami/scripts/mariadb-galera/entrypoint.sh '/opt/bitnami/scripts/mariadb-galera/run.sh'"
-    depends_on: galera0
-  galera4:
-    image: bitnami/mariadb-galera
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
-      - MARIADB_GALERA_CLUSTER_ADDRESS=gcomm://galera0:4567,0.0.0.0:4567
-    ports:
-      - 127.0.0.1:3310:3306
-    entrypoint: 
-      - "sh"
-      - "-c"
-      - "sleep 10 && /opt/bitnami/scripts/mariadb-galera/entrypoint.sh '/opt/bitnami/scripts/mariadb-galera/run.sh'"
-    depends_on: galera0
+    logging:
+      driver: json-file

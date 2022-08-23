@@ -1,90 +1,59 @@
-use std::path::Path;
-
 use crate::db::cluster::{Cluster, ClusterNode, Node};
 use crate::db::history::{HistParams, Transaction};
 
-use std::fs;
-
-use clap::{App, Arg};
-
-use mysql::{Conn, Opts, TxOpts, prelude::Queryable};
+use mysql::{Conn, TxOpts, prelude::*};
 
 #[derive(Debug)]
 pub struct GaleraNode {
     addr: String,
-    id: usize,
 }
 
 impl From<Node> for GaleraNode {
     fn from(node: Node) -> Self {
         GaleraNode {
             addr: format!("mysql://{}@{}", "root", node.addr),
-            id: node.id,
         }
     }
 }
 
 impl ClusterNode for GaleraNode {
     fn exec_session(&self, hist: &mut Vec<Transaction>) {
-        match Conn::new(TxOpts::) {
-            Ok(conn) => hist.iter_mut().for_each(|transaction| {
-                for mut sqltxn in conn.start_transaction(
-                    true,
-                    Some(mysql::IsolationLevel::RepeatableRead),
-                    Some(false),
-                ) {
-                    transaction.events.iter_mut().for_each(|event| {
-                        if event.write {
-                            match sqltxn.prep_exec(
-                                "UPDATE dbcop.variables SET val=? WHERE var=?",
-                                (event.value, event.variable),
-                            ) {
-                                Ok(_) => event.success = true,
-                                Err(_e) => {
-                                    assert_eq!(event.success, false);
-                                    // println!("WRITE ERR -- {:?}", _e);
-                                }
-                            }
-                        } else {
-                            match sqltxn.prep_exec(
-                                "SELECT * FROM dbcop.variables WHERE var=?",
-                                (event.variable,),
-                            ) {
-                                Ok(mut result) => {
-                                    if let Some(q_result) = result.next() {
-                                        let mut row = q_result.unwrap();
-                                        if let Some(value) = row.take("val") {
-                                            event.value = value;
-                                            event.success = true;
-                                        }
-                                    } else {
-                                        // may be diverged
-                                        assert_eq!(event.success, false);
-                                    }
-                                }
-                                Err(_e) => {
-                                    // println!("READ ERR -- {:?}", _e);
-                                    assert_eq!(event.success, false);
-                                }
-                            }
+        let mut conn = Conn::new(self.addr.as_str()).unwrap();
+        let txnopts = TxOpts::default()
+            .set_isolation_level(Some(mysql::IsolationLevel::ReadCommitted))
+            .set_access_mode(Some(mysql::AccessMode::ReadWrite))
+            .set_with_consistent_snapshot(true);
+        let read_stmt = conn.prep("SELECT * FROM dbcop.variables WHERE var=?").unwrap();
+        let write_stmt = conn.prep("UPDATE dbcop.variables SET val=? WHERE var=?").unwrap();
+
+        for transaction in hist.iter_mut() {
+            while !transaction.success {
+                transaction.success = true;
+                let mut sqltxn = conn.start_transaction(txnopts).unwrap();
+
+                for event in transaction.events.iter_mut() {
+                    if event.write {
+                        if let Err(_) = sqltxn.exec_drop(&write_stmt, (event.value, event.variable)) {
+                            transaction.success = false;
+                            break;
                         }
-                    });
-                    match sqltxn.commit() {
-                        Ok(_) => {
-                            transaction.success = true;
-                        }
-                        Err(_e) => {
-                            assert_eq!(transaction.success, false);
-                            println!("{:?} -- COMMIT ERROR {}", transaction, _e);
+                        event.success = true;
+                    } else {
+                        match sqltxn.exec_first(&read_stmt, (event.variable,)) {
+                            Ok(result) => {
+                                let mut row: mysql::Row = result.unwrap();
+                                event.value = row.take("val").unwrap();
+                                event.success = true;
+                            },
+                            Err(_) => {
+                                transaction.success = false;
+                                break;
+                            }
                         }
                     }
                 }
-            }),
-            Err(_e) => {
-                hist.iter().for_each(|transaction| {
-                    assert_eq!(transaction.success, false);
-                });
-                // println!("CONNECTION ERROR {}", _e);}
+
+                transaction.success = transaction.success && sqltxn.commit().is_ok();
             }
         }
     }
@@ -94,47 +63,37 @@ impl ClusterNode for GaleraNode {
 pub struct GaleraCluster(Vec<Node>);
 
 impl GaleraCluster {
-    fn new(ips: &Vec<&str>) -> Self {
+    pub fn new(ips: &Vec<&str>) -> Self {
         GaleraCluster(GaleraCluster::node_vec(ips))
     }
 
     fn create_table(&self) -> bool {
-        match self.get_mysql_addr(0) {
-            Some(ip) => mysql::Pool::new(ip)
-                .and_then(|pool| {
-                    pool.prep_exec("CREATE DATABASE IF NOT EXISTS dbcop", ()).unwrap();
-                    pool.prep_exec("DROP TABLE IF EXISTS dbcop.variables", ()).unwrap();
-                    pool.prep_exec(
-                        "CREATE TABLE IF NOT EXISTS dbcop.variables (var BIGINT(64) UNSIGNED NOT NULL PRIMARY KEY, val BIGINT(64) UNSIGNED NOT NULL)", ()
-                    ).unwrap();
-                    // conn.query("USE dbcop").unwrap();
-                    Ok(true)
-                }).expect("problem creating database"),
-            _ => false,
-        }
+        let addr = self.get_mysql_addr(0).unwrap();
+        let mut conn = mysql::Conn::new(addr.as_str()).unwrap();
+
+        conn.exec_drop("CREATE DATABASE IF NOT EXISTS dbcop", ()).unwrap();
+        conn.exec_drop("DROP TABLE IF EXISTS dbcop.variables", ()).unwrap();
+        conn.exec_drop(
+            "CREATE TABLE IF NOT EXISTS dbcop.variables (var BIGINT(64) UNSIGNED NOT NULL PRIMARY KEY, val BIGINT(64) UNSIGNED NOT NULL)", ()
+        ).unwrap();
+        true
     }
 
     fn create_variables(&self, n_variable: usize) {
-        if let Some(ip) = self.get_mysql_addr(0) {
-            if let Ok(conn) = mysql::Pool::new(ip) {
-                for mut stmt in conn
-                    .prepare("INSERT INTO dbcop.variables (var, val) values (?, 0)")
-                    .into_iter()
-                {
-                    (0..n_variable).for_each(|variable| {
-                        stmt.execute((variable,)).unwrap();
-                    });
-                }
-            }
-        }
+        let addr = self.get_mysql_addr(0).unwrap();
+        let mut conn = mysql::Conn::new(addr.as_str()).unwrap();
+
+        conn.exec_batch(
+            "INSERT INTO dbcop.variables (var, val) values (?, 0)",
+            (0..n_variable).map(|v| (v,))
+        ).unwrap();
     }
 
     fn drop_database(&self) {
-        if let Some(ip) = self.get_mysql_addr(0) {
-            if let Ok(conn) = mysql::Pool::new(ip) {
-                conn.prep_exec("DROP DATABASE dbcop", ()).unwrap();
-            }
-        }
+        let addr = self.get_mysql_addr(0).unwrap();
+        let mut conn = mysql::Conn::new(addr.as_str()).unwrap();
+
+        conn.exec_drop("DROP DATABASE dbcop", ()).unwrap();
     }
 
     fn get_mysql_addr(&self, i: usize) -> Option<String> {
@@ -168,42 +127,3 @@ impl Cluster<GaleraNode> for GaleraCluster {
         "Galera".to_string()
     }
 }
-
-// fn main() {
-//     let matches = App::new("Galera")
-//         .version("1.0")
-//         .author("Ranadeep")
-//         .about("executes histories on Galera")
-//         .arg(
-//             Arg::with_name("hist_dir")
-//                 .long("dir")
-//                 .short("d")
-//                 .takes_value(true)
-//                 .required(true),
-//         )
-//         .arg(
-//             Arg::with_name("hist_out")
-//                 .long("out")
-//                 .short("o")
-//                 .takes_value(true)
-//                 .required(true),
-//         )
-//         .arg(
-//             Arg::with_name("ip:port")
-//                 .help("Cluster addrs")
-//                 .multiple(true)
-//                 .required(true),
-//         )
-//         .get_matches();
-
-//     let hist_dir = Path::new(matches.value_of("hist_dir").unwrap());
-//     let hist_out = Path::new(matches.value_of("hist_out").unwrap());
-
-//     fs::create_dir_all(hist_out).expect("couldn't create directory");
-
-//     let ips: Vec<_> = matches.values_of("ip:port").unwrap().collect();
-
-//     let mut cluster = GaleraCluster::new(&ips);
-
-//     cluster.execute_all(hist_dir, hist_out, 500);
-// }

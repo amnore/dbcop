@@ -2,8 +2,8 @@ mod clients;
 mod db;
 
 use clap::{App, AppSettings, Arg, SubCommand};
-use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster, PostgresSERCluster, DGraphCluster};
-use db::cluster::{Cluster, ClusterNode};
+use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster, PostgresSERCluster, DGraphCluster, GaleraCluster};
+use db::cluster::Cluster;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
@@ -137,12 +137,17 @@ fn main() {
                         .takes_value(true)
                         .required(true),
                 )
-                .arg(Arg::with_name("ip:port").help("DB addr").required(true))
+                .arg(
+                    Arg::with_name("ip:port")
+                         .help("DB addr")
+                         .multiple_values(true)
+                         .required(true)
+                )
                 .arg(
                     Arg::with_name("database")
                         .long("db")
                         .takes_value(true)
-                        .possible_values(["memgraph", "postgres", "postgres_ser", "dgraph"])
+                        .possible_values(["memgraph", "postgres", "postgres_ser", "dgraph", "galera"])
                         .required(true),
                 ),
         ])
@@ -216,6 +221,7 @@ fn main() {
                 Some("postgres") => Box::new(DynCluster::new(PostgresCluster::new(&ips))),
                 Some("postgres_ser") => Box::new(DynCluster::new(PostgresSERCluster::new(&ips))),
                 Some("dgraph") => Box::new(DynCluster::new(DGraphCluster::new(&ips))),
+                Some("galera") => Box::new(DynCluster::new(GaleraCluster::new(&ips))),
                 _ => unreachable!(),
             };
 
