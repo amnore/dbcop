@@ -3,6 +3,8 @@ general_log
 general_log_file=/tmp/mariadb_general.log
 wsrep_log_conflicts=ON
 wsrep_provider_options="cert.log_conflicts=ON"
-wsrep_debug=TRANSACTION
+wsrep_debug=4
 log_error=/tmp/mariadb_error.log
 log_bin=/tmp/mariadb_bin
+wsrep_sync_wait=1
+debug=d,query,exec_query
