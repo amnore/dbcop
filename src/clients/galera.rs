@@ -20,7 +20,7 @@ impl ClusterNode for GaleraNode {
     fn exec_session(&self, hist: &mut Vec<Transaction>) {
         let mut conn = Conn::new(self.addr.as_str()).unwrap();
         let txnopts = TxOpts::default()
-            .set_isolation_level(Some(mysql::IsolationLevel::ReadCommitted))
+            .set_isolation_level(Some(mysql::IsolationLevel::RepeatableRead))
             .set_access_mode(Some(mysql::AccessMode::ReadWrite))
             .set_with_consistent_snapshot(true);
         let read_stmt = conn.prep("SELECT * FROM dbcop.variables WHERE var=?").unwrap();
