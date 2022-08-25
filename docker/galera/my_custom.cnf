@@ -6,3 +6,4 @@ wsrep_provider_options="cert.log_conflicts=ON"
 wsrep_debug=TRANSACTION
 log_error=/tmp/mariadb_error.log
 log_bin=/tmp/mariadb_bin
+wsrep_sync_wait=1
