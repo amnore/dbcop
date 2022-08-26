@@ -2,7 +2,7 @@ mod clients;
 mod db;
 
 use clap::{App, AppSettings, Arg, SubCommand};
-use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster, PostgresSERCluster, DGraphCluster, GaleraCluster};
+use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster, PostgresSERCluster, DGraphCluster, GaleraCluster, MySQLCluster};
 use db::cluster::Cluster;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -147,7 +147,7 @@ fn main() {
                     Arg::with_name("database")
                         .long("db")
                         .takes_value(true)
-                        .possible_values(["memgraph", "postgres", "postgres_ser", "dgraph", "galera"])
+                        .possible_values(["memgraph", "postgres", "postgres_ser", "dgraph", "galera", "mysql"])
                         .required(true),
                 ),
         ])
@@ -222,6 +222,7 @@ fn main() {
                 Some("postgres_ser") => Box::new(DynCluster::new(PostgresSERCluster::new(&ips))),
                 Some("dgraph") => Box::new(DynCluster::new(DGraphCluster::new(&ips))),
                 Some("galera") => Box::new(DynCluster::new(GaleraCluster::new(&ips))),
+                Some("mysql") => Box::new(DynCluster::new(MySQLCluster::new(&ips))),
                 _ => unreachable!(),
             };
 

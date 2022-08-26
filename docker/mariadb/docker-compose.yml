@@ -1,0 +1,11 @@
+version: "3.7"
+
+services:
+  mariadb:
+    image: mariadb:10.4.22
+    environment:
+      - MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=yes
+    ports:
+      - 127.0.0.1:3306:3306
+    logging:
+      driver: json-file
