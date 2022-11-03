@@ -61,7 +61,8 @@ impl ClusterNode for PostgresNode {
                 for event in transaction.events.iter_mut() {
                     if event.write {
                         match sqltxn.execute(
-                            "UPDATE dbcop.variables SET val=$1 WHERE var=$2",
+                            "INSERT INTO dbcop.variables (var, val) VALUES ($2, $1)
+                             ON CONFLICT (var) DO UPDATE SET val=$1",
                             &[&(event.value as i64), &(event.variable as i64)],
                         ) {
                             Ok(_) => event.success = true,
@@ -78,9 +79,15 @@ impl ClusterNode for PostgresNode {
                             &[&(event.variable as i64)],
                         ) {
                             Ok(result) => {
-                                let row = result.get(0);
-                                let value: i64 = row.unwrap().get("val");
-                                event.value = value as usize;
+                                if result.len() == 0 {
+                                    // due to lazy insert, the variable may not exist
+                                    // set result to the initial value
+                                    event.value = 0;
+                                } else {
+                                    let row = result.get(0);
+                                    let value: i64 = row.unwrap().get("val");
+                                    event.value = value as usize;
+                                }
                                 event.success = true;
                             }
                             Err(e) => {
@@ -132,22 +139,15 @@ impl PostgresCluster {
     }
 
     fn create_variables(&self, n_variable: usize) {
-        if let Some(ip) = self.get_postgresql_addr(0) {
-            if let Ok(mut conn) = Client::connect(ip.as_str(), NoTls) {
-                let mut writer = conn.copy_in("COPY dbcop.variables FROM STDIN").unwrap();
-                (0..n_variable).for_each(|var| writer.write_all(format!("{}\t{}\n", var, 0).as_bytes()).unwrap());
-                writer.finish().unwrap();
-                // for stmt in conn
-                    // .prepare("INSERT INTO dbcop.variables (var, val) values ($1, 0)")
-                    // .into_iter()
-                // {
-                    // (0..n_variable).for_each(|variable| {
-                        // conn.execute(&stmt, &[&(variable as i64)])
-                            // .expect("Cannot create variable");
-                    // });
-                // }
-            }
-        }
+        // variables are created lazily
+
+        // if let Some(ip) = self.get_postgresql_addr(0) {
+            // if let Ok(mut conn) = Client::connect(ip.as_str(), NoTls) {
+                // let mut writer = conn.copy_in("COPY dbcop.variables FROM STDIN").unwrap();
+                // (0..n_variable).for_each(|var| writer.write_all(format!("{}\t{}\n", var, 0).as_bytes()).unwrap());
+                // writer.finish().unwrap();
+            // }
+        // }
     }
 
     fn drop_database(&self) {
