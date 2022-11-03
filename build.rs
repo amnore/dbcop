@@ -16,6 +16,8 @@ fn main() {
         .compile("memgraph-ops");
 
     // static libs comes last
-    println!("cargo:rustc-link-search=native={}/lib", mgclient.display());
+    for path in [ "lib", "lib64", "lib32" ] {
+        println!("cargo:rustc-link-search=native={}/{}", mgclient.display(), path);
+    }
     println!("cargo:rustc-link-lib=static=mgclient");
 }
