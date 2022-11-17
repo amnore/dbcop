@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::fs;
 
 use db::distribution::{MyDistribution, MyDistributionTrait};
-use db::history::generate_mult_histories;
+use db::history::{generate_mult_histories, HistoryParams};
 use db::history::History;
 
 use zipf::ZipfDistribution;
@@ -80,6 +80,12 @@ enum Commands {
 
         #[clap(value_enum, long = "key_distrib", default_value_t = KeyDistribution::Uniform, help = "Key access distribution")]
         key_distribution: KeyDistribution,
+
+        #[clap(long, default_value_t = 0.0, help = "Proportion of long transactions")]
+        longtxn_proportion: f64,
+
+        #[clap(long, default_value_t = 10.0, help = "Times of size of long transactions compared to regular txns")]
+        longtxn_size: f64,
     },
     Print {
         #[clap(short = 'd', help = "Directory containing executed history")]
@@ -123,7 +129,7 @@ fn main() {
 
             println!("{:?}", hist);
         }
-        Commands::Generate { g_directory, n_history, n_node, n_variable, n_transaction, n_event, read_probability, key_distribution } => {
+        Commands::Generate { g_directory, n_history, n_node, n_variable, n_transaction, n_event, read_probability, key_distribution, longtxn_proportion, longtxn_size } => {
             if !g_directory.is_dir() {
                 fs::create_dir_all(&g_directory).expect("failed to create directory");
             }
@@ -142,13 +148,17 @@ fn main() {
                 };
 
             let mut histories = generate_mult_histories(
-                n_history,
-                n_node,
-                n_variable,
-                n_transaction,
-                n_event,
-                read_probability,
-                distribution.as_ref(),
+                HistoryParams {
+                    n_hist: n_history,
+                    n_node,
+                    n_variable,
+                    n_transaction,
+                    n_event,
+                    read_probability,
+                    key_distribution: distribution.as_ref(),
+                    longtxn_proportion,
+                    longtxn_size,
+                }
             );
 
             for hist in histories.drain(..) {
