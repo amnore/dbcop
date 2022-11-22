@@ -1,5 +1,6 @@
 mod clients;
 mod db;
+mod verifier;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster, PostgresSERCluster, DGraphCluster, GaleraCluster, MySQLCluster};
@@ -16,6 +17,8 @@ use std::fs;
 use db::distribution::{MyDistribution, MyDistributionTrait};
 use db::history::{generate_mult_histories, HistoryParams};
 use db::history::History;
+
+use verifier::Verifier;
 
 use zipf::ZipfDistribution;
 
@@ -104,7 +107,24 @@ enum Commands {
 
         #[clap(long = "db", value_enum)]
         database: Database,
-    }
+    },
+    #[clap(about = "Verifies histories")]
+    Verify {
+        #[clap(long = "ver_dir", short = 'd', help = "Directory containing executed histories")]
+        v_directory: PathBuf,
+
+        #[clap(long = "out_dir", short = 'o', help = "Directory to output the results")]
+        o_directory: PathBuf,
+
+        #[clap(long = "sat", default_value_t = false, help = "Use MiniSAT as backend")]
+        sat: bool,
+
+        #[clap(long = "bic", default_value_t = false, help = "Use BiComponent")]
+        bicomponent: bool,
+
+        #[clap(long = "cons", short = 'c', value_enum, help = "Check for mentioned consistency")]
+        consistency: Option<Consistency>,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -115,6 +135,11 @@ enum KeyDistribution {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum Database {
     Memgraph, Postgres, PostgresSer, Dgraph, Galera, Mysql
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum Consistency {
+    Cc, Si, Ser
 }
 
 fn main() {
@@ -183,6 +208,44 @@ fn main() {
             };
 
             cluster.execute_all(&hist_dir.as_path(), &hist_out.as_path(), 100);
+        }
+        Commands::Verify { v_directory, o_directory, sat, bicomponent, consistency } => {
+            let v_path = v_directory.join("history.bincode");
+            let file = File::open(v_path).unwrap();
+            let buf_reader = BufReader::new(file);
+            let hist: History = bincode::deserialize_from(buf_reader).unwrap();
+
+            println!("{:?}", hist);
+
+            if !o_directory.is_dir() {
+                fs::create_dir_all(&o_directory).expect("failed to create directory");
+            }
+
+            // let curr_dir = o_dir.join(format!("hist-{:05}", hist.get_id()));
+
+            let mut verifier = Verifier::new(&o_directory);
+
+            match consistency {
+                Some(Consistency::Cc) => verifier.model("cc"),
+                Some(Consistency::Si) => verifier.model("si"),
+                Some(Consistency::Ser) => verifier.model("ser"),
+                None => verifier.model(""),
+            };
+
+            verifier.sat(sat);
+            verifier.bicomponent(bicomponent);
+
+            println!("no. of session {:?}", hist.get_data().len());
+            println!("no. of transactions {:?}", hist.get_data()[0].len());
+
+            match verifier.verify(hist.get_data()) {
+                Some(level) => println!(
+                    "hist-{:05} failed - minimum level failed {:?}",
+                    hist.get_id(),
+                    level
+                ),
+                None => println!("hist-{:05} done", hist.get_id()),
+            }
         }
     }
 }
