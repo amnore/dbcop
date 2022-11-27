@@ -18,6 +18,8 @@ indicatif = "0.16.2"
 mysql = "22.2.0"
 # rsmgclient = "2.0.0"
 cxx = "1.0.72"
+jemallocator = "0.5.0"
+jemalloc-ctl = "0.5.0"
 
 [build-dependencies]
 cmake = "0.1.48"

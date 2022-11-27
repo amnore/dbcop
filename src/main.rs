@@ -5,14 +5,21 @@ mod verifier;
 use clap::{Parser, Subcommand, ValueEnum};
 use clients::{DynCluster, DynNode, MemgraphCluster, PostgresCluster, PostgresSERCluster, DGraphCluster, GaleraCluster, MySQLCluster};
 use db::cluster::Cluster;
+use jemalloc_ctl::{stats, epoch};
+use jemallocator::Jemalloc;
+use std::cell::RefCell;
+use std::cmp::max;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
+use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
+use std::sync::{Mutex, Arc};
+use std::time::Duration;
 
 use rand::distributions::{Bernoulli, Distribution, Uniform};
 
 use std::path::PathBuf;
 
-use std::fs;
+use std::{fs, thread};
 
 use db::distribution::{MyDistribution, MyDistributionTrait};
 use db::history::{generate_mult_histories, HistoryParams};
@@ -21,6 +28,9 @@ use db::history::History;
 use verifier::Verifier;
 
 use zipf::ZipfDistribution;
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 struct HotspotDistribution {
     hot_probability: Bernoulli,
@@ -210,6 +220,25 @@ fn main() {
             cluster.execute_all(&hist_dir.as_path(), &hist_out.as_path(), 100);
         }
         Commands::Verify { v_directory, o_directory, sat, bicomponent, consistency } => {
+            let max_memory: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+            let signal: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+
+            let _max_memory = max_memory.clone();
+            let _signal = signal.clone();
+            let stat_thread = thread::spawn(move || {
+                loop {
+                    epoch::advance().unwrap();
+
+                    let current = stats::allocated::read().unwrap();
+                    _max_memory.fetch_max(current, Ordering::SeqCst);
+
+                    if _signal.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    thread::sleep(Duration::from_millis(100));
+                }
+            });
+
             let v_path = v_directory.join("history.bincode");
             let file = File::open(v_path).unwrap();
             let buf_reader = BufReader::new(file);
@@ -246,6 +275,10 @@ fn main() {
                 ),
                 None => println!("hist-{:05} done", hist.get_id()),
             }
+
+            signal.swap(true, Ordering::SeqCst);
+            stat_thread.join().unwrap();
+            eprintln!("Max memory: {}", max_memory.load(Ordering::SeqCst));
         }
     }
 }
