@@ -1,6 +1,5 @@
-use std::fmt;
+use std::{fmt, collections::HashMap};
 
-use std::collections::HashMap;
 
 use rand::distributions::{Distribution, Bernoulli};
 
@@ -16,6 +15,8 @@ pub struct Event {
     pub variable: usize,
     pub value: usize,
     pub success: bool,
+    pub start_time: u128,
+    pub end_time: u128,
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
@@ -61,6 +62,8 @@ impl Event {
             variable: var,
             value: 0,
             success: false,
+            start_time: 0,
+            end_time: 0,
         }
     }
     pub fn write(var: usize, val: usize) -> Self {
@@ -69,6 +72,8 @@ impl Event {
             variable: var,
             value: val,
             success: false,
+            start_time: 0,
+            end_time: 0,
         }
     }
 }

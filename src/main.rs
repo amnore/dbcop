@@ -116,10 +116,10 @@ enum Commands {
         #[clap(long = "out_dir", short = 'o', help = "Directory to output the results")]
         o_directory: PathBuf,
 
-        #[clap(long = "sat", default_value_t = false, help = "Use MiniSAT as backend")]
+        #[clap(long = "sat", action, help = "Use MiniSAT as backend")]
         sat: bool,
 
-        #[clap(long = "bic", default_value_t = false, help = "Use BiComponent")]
+        #[clap(long = "bic", action, help = "Use BiComponent")]
         bicomponent: bool,
 
         #[clap(long = "cons", short = 'c', value_enum, help = "Check for mentioned consistency")]
