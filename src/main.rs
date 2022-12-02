@@ -99,6 +99,9 @@ enum Commands {
 
         #[clap(long, default_value_t = 10.0, help = "Times of size of long transactions compared to regular txns")]
         longtxn_size: f64,
+
+        #[clap(long, action, help = "Generate transactions with RMW operations only, read_probability has no effect if rmw_only is set")]
+        rmw_only: bool,
     },
     Print {
         #[clap(short = 'd', help = "Directory containing executed history")]
@@ -164,7 +167,7 @@ fn main() {
 
             println!("{:?}", hist);
         }
-        Commands::Generate { g_directory, n_history, n_node, n_variable, n_transaction, n_event, read_probability, key_distribution, longtxn_proportion, longtxn_size } => {
+        Commands::Generate { g_directory, n_history, n_node, n_variable, n_transaction, n_event, read_probability, key_distribution, longtxn_proportion, longtxn_size, rmw_only } => {
             if !g_directory.is_dir() {
                 fs::create_dir_all(&g_directory).expect("failed to create directory");
             }
@@ -193,6 +196,7 @@ fn main() {
                     key_distribution: distribution.as_ref(),
                     longtxn_proportion,
                     longtxn_size,
+                    rmw_only,
                 }
             );
 
@@ -244,7 +248,7 @@ fn main() {
             let buf_reader = BufReader::new(file);
             let hist: History = bincode::deserialize_from(buf_reader).unwrap();
 
-            println!("{:?}", hist);
+            // println!("{:?}", hist);
 
             if !o_directory.is_dir() {
                 fs::create_dir_all(&o_directory).expect("failed to create directory");

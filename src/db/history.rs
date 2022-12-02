@@ -38,6 +38,7 @@ pub struct HistoryParams<'a> {
     pub longtxn_proportion: f64,
     pub longtxn_size: f64,
     pub key_distribution: &'a dyn MyDistributionTrait,
+    pub rmw_only: bool,
 }
 
 impl fmt::Debug for Event {
@@ -188,19 +189,34 @@ pub fn generate_single_history(
                 params.n_event
             };
 
-            let generate_event = |_| {
-                if read_distribution.sample(&mut random_generator) {
-                    let variable = params.key_distribution.sample(&mut random_generator);
-                    Event::read(variable)
+            let generate_read_event = |v| {
+                Event::read(v)
+            };
+            let mut generate_write_event = |v| {
+                let value = {
+                    let entry = counters.entry(v).or_insert(0);
+                    *entry += 1;
+                    *entry
+                };
+                Event::write(v, value)
+            };
+            let mut previous_variable: Option<usize> = None;
+            let generate_event = |n| {
+                let variable = params.key_distribution.sample(&mut random_generator);
+
+                if params.rmw_only {
+                    if n % 2 == 0 {
+                        previous_variable = Some(variable);
+                        generate_read_event(variable)
+                    } else {
+                        generate_write_event(previous_variable.unwrap())
+                    }
                 } else {
-                    let variable = params.key_distribution.sample(&mut random_generator);
-                    // let variable = write_variable_range.sample(&mut random_generator);
-                    let value = {
-                        let entry = counters.entry(variable).or_insert(0);
-                        *entry += 1;
-                        *entry
-                    };
-                    Event::write(variable, value)
+                    if read_distribution.sample(&mut random_generator) {
+                        generate_read_event(variable)
+                    } else {
+                        generate_write_event(variable)
+                    }
                 }
             };
 
