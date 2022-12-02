@@ -152,7 +152,7 @@ enum Database {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum Consistency {
-    Cc, Si, Ser
+    Cc, Si, Ser, Lin
 }
 
 fn main() {
@@ -262,6 +262,7 @@ fn main() {
                 Some(Consistency::Cc) => verifier.model("cc"),
                 Some(Consistency::Si) => verifier.model("si"),
                 Some(Consistency::Ser) => verifier.model("ser"),
+                Some(Consistency::Lin) => verifier.model("lin"),
                 None => verifier.model(""),
             };
 

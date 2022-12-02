@@ -1,5 +1,6 @@
 mod consistency;
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 // use std::fs;
 use std::fs::File;
@@ -7,7 +8,7 @@ use std::path::PathBuf;
 
 // use consistency::sat::Sat;
 use consistency::Consistency;
-use crate::db::history::Session;
+use crate::db::history::{Session, Event};
 
 use consistency::algo::{
     AtomicHistoryPO, PrefixConsistentHistory, SerializableHistory, SnapshotIsolationHistory,
@@ -47,6 +48,7 @@ impl Verifier {
             "pre" => Consistency::Prefix,
             "si" => Consistency::SnapshotIsolation,
             "ser" => Consistency::Serializable,
+            "lin" => Consistency::Linearizable,
             "" => Consistency::Inc,
             &_ => unreachable!(),
         }
@@ -100,6 +102,51 @@ impl Verifier {
         );
 
         decision
+    }
+
+    fn verify_history_linearizable(&self, histories: &[Session]) -> bool {
+        let mut operations = histories.iter().flatten().flat_map(|t| {
+            let mut rmw_ops = Vec::new();
+            let mut read_op: RefCell<Option<&Event>> = RefCell::new(None);
+
+            for ev in &t.events {
+                if ev.write {
+                    let read_ev = read_op.take().unwrap();
+                    assert_eq!(read_ev.variable, ev.variable);
+                    assert!(read_ev.success && ev.success);
+
+                    rmw_ops.push(Event {
+                        write: true,
+                        variable: ev.variable,
+                        value: ev.value,
+                        success: true,
+                        start_time: read_ev.start_time,
+                        end_time: ev.end_time,
+                    });
+                } else {
+                    read_op.replace(Some(ev));
+                }
+            }
+
+            rmw_ops.into_iter()
+        }).collect::<Vec<_>>();
+        operations.sort_by_key(|e| e.start_time);
+        self.time_valid(&operations, 0, operations.len())
+    }
+
+    fn time_valid(&self, events: &Vec<Event>, i: usize, j: usize) -> bool {
+        if i >= j {
+            return true;
+        }
+
+        let first = &events[i];
+        for k in i+1..j {
+            if first.start_time >= events[k].end_time {
+                return false;
+            }
+        }
+
+        self.time_valid(events, i+1, j)
     }
 
     pub fn transactional_history_verify(&mut self, histories: &[Session]) -> Option<Consistency> {
@@ -332,14 +379,14 @@ impl Verifier {
                 eprintln!("doing for component {:?}", component);
                 let restrict_infos = self.restrict(&transaction_infos, component);
 
-                self.do_hard_verification(&restrict_infos).is_none()
+                self.do_hard_verification(&histories, &restrict_infos).is_none()
             }) {
                 None
             } else {
                 Some(self.consistency_model)
             }
         } else {
-            self.do_hard_verification(&transaction_infos)
+            self.do_hard_verification(histories, &transaction_infos)
         }
     }
 
@@ -364,6 +411,7 @@ impl Verifier {
 
     fn do_hard_verification(
         &mut self,
+        histories: &[Session],
         transaction_infos: &HashMap<
             (usize, usize),
             (HashMap<usize, (usize, usize)>, HashSet<usize>),
@@ -554,29 +602,36 @@ impl Verifier {
                         }
                     }
                 }
+                Consistency::Linearizable => {
+                    if self.verify_history_linearizable(histories) {
+                        None
+                    } else {
+                        Some(Consistency::Linearizable)
+                    }
+                }
                 Consistency::Inc => {
                     self.consistency_model = Consistency::ReadAtomic;
-                    let decision = self.do_hard_verification(transaction_infos);
+                    let decision = self.do_hard_verification(&histories, transaction_infos);
                     if decision.is_some() {
                         return decision;
                     }
                     self.consistency_model = Consistency::Causal;
-                    let decision = self.do_hard_verification(transaction_infos);
+                    let decision = self.do_hard_verification(&histories, transaction_infos);
                     if decision.is_some() {
                         return decision;
                     }
                     self.consistency_model = Consistency::Prefix;
-                    let decision = self.do_hard_verification(transaction_infos);
+                    let decision = self.do_hard_verification(&histories, transaction_infos);
                     if decision.is_some() {
                         return decision;
                     }
                     self.consistency_model = Consistency::SnapshotIsolation;
-                    let decision = self.do_hard_verification(transaction_infos);
+                    let decision = self.do_hard_verification(&histories, transaction_infos);
                     if decision.is_some() {
                         return decision;
                     }
                     self.consistency_model = Consistency::Serializable;
-                    let decision = self.do_hard_verification(transaction_infos);
+                    let decision = self.do_hard_verification(&histories, transaction_infos);
                     if decision.is_some() {
                         return decision;
                     }

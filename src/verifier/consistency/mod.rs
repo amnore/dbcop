@@ -11,5 +11,6 @@ pub enum Consistency {
     Prefix,
     SnapshotIsolation,
     Serializable,
+    Linearizable,
     Inc,
 }
