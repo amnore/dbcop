@@ -86,6 +86,9 @@ enum Commands {
 
         #[clap(long, default_value_t = 10.0, help = "Times of size of long transactions compared to regular txns")]
         longtxn_size: f64,
+
+        #[clap(long, action, help = "Randomize size of transactions")]
+        random_txn_size: bool,
     },
     Print {
         #[clap(short = 'd', help = "Directory containing executed history")]
@@ -129,7 +132,7 @@ fn main() {
 
             println!("{:?}", hist);
         }
-        Commands::Generate { g_directory, n_history, n_node, n_variable, n_transaction, n_event, read_probability, key_distribution, longtxn_proportion, longtxn_size } => {
+        Commands::Generate { g_directory, n_history, n_node, n_variable, n_transaction, n_event, read_probability, key_distribution, longtxn_proportion, longtxn_size, random_txn_size } => {
             if !g_directory.is_dir() {
                 fs::create_dir_all(&g_directory).expect("failed to create directory");
             }
@@ -158,6 +161,7 @@ fn main() {
                     key_distribution: distribution.as_ref(),
                     longtxn_proportion,
                     longtxn_size,
+                    random_txn_size,
                 }
             );
 

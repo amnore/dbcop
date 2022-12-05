@@ -2,7 +2,7 @@ use std::fmt;
 
 use std::collections::HashMap;
 
-use rand::distributions::{Distribution, Bernoulli};
+use rand::distributions::{Distribution, Bernoulli, Uniform};
 
 use super::distribution::MyDistributionTrait;
 
@@ -37,6 +37,7 @@ pub struct HistoryParams<'a> {
     pub longtxn_proportion: f64,
     pub longtxn_size: f64,
     pub key_distribution: &'a dyn MyDistributionTrait,
+    pub random_txn_size: bool,
 }
 
 impl fmt::Debug for Event {
@@ -171,16 +172,27 @@ pub fn generate_single_history(
     let mut random_generator = rand::thread_rng();
     let read_distribution = Bernoulli::new(params.read_probability).unwrap();
     let longtxn_distribution = Bernoulli::new(params.longtxn_proportion).unwrap();
+    let shorttxn_size_distribution = Uniform::new(1, 2 * params.n_event - 1);
+    let longtxn_size_distribution = Uniform::new((params.n_event as f64 * params.longtxn_size * 0.5) as usize,
+                                                 (params.n_event as f64 * params.longtxn_size * 1.5) as usize);
     // let _jump = (params.n_variable as f64 / params.n_node as f64).ceil() as usize;
     (0..params.n_node).map(|_| {
         // let i = i_node * jump;
         // let j = std::cmp::min((i_node + 1) * jump, n_variable);
         // let write_variable_range = Uniform::from(i..j);
         (0..params.n_transaction).map(|_| {
-            let size = if longtxn_distribution.sample(&mut random_generator) {
-                params.n_event * params.longtxn_size as usize
+            let size = if params.random_txn_size {
+                if longtxn_distribution.sample(&mut random_generator) {
+                    longtxn_size_distribution.sample(&mut random_generator)
+                } else {
+                    shorttxn_size_distribution.sample(&mut random_generator)
+                }
             } else {
-                params.n_event
+                if longtxn_distribution.sample(&mut random_generator) {
+                    (params.n_event as f64 * params.longtxn_size) as usize
+                } else {
+                    params.n_event
+                }
             };
 
             let generate_event = |_| {
