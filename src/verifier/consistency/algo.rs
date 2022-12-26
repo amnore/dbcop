@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::verifier::{TransactionId, TransactionInfo};
+
 use super::util::{ConstrainedLinearization, DiGraph};
 
-type TransactionId = (usize, usize);
-type TransactionInfo = (HashMap<usize, TransactionId>, HashSet<usize>);
 type Variable = usize;
 
 #[derive(Debug, Default)]
@@ -17,7 +17,7 @@ pub struct AtomicHistoryPO {
 
 impl AtomicHistoryPO {
     pub fn new(txns_info: HashMap<TransactionId, TransactionInfo>) -> AtomicHistoryPO {
-        let root = (0, 0);
+        let root = TransactionId(0, 0);
         let mut so: DiGraph<TransactionId> = Default::default();
 
         {
@@ -25,7 +25,7 @@ impl AtomicHistoryPO {
             transactions.sort_unstable();
 
             for ts in transactions.windows(2) {
-                so.add_edge(if ts[0].0 == ts[1].0 { ts[0] } else { (0, 0) }, ts[1])
+                so.add_edge(if ts[0].0 == ts[1].0 { ts[0] } else { TransactionId(0, 0) }, ts[1])
             }
         }
 
@@ -34,13 +34,13 @@ impl AtomicHistoryPO {
         let mut wr_rel: HashMap<Variable, DiGraph<TransactionId>> = Default::default();
 
         for (&txn_id, txn_info) in txns_info.iter() {
-            for &var in txn_info.1.iter() {
+            for &var in txn_info.write.iter() {
                 wr_rel
                     .entry(var)
                     .or_insert_with(Default::default)
                     .add_vertex(txn_id);
             }
-            for (&var, &txn_id2) in txn_info.0.iter() {
+            for (&var, &txn_id2) in txn_info.read_from.iter() {
                 wr_rel
                     .entry(var)
                     .or_insert_with(Default::default)
@@ -145,7 +145,7 @@ impl PrefixConsistentHistory {
 impl ConstrainedLinearization for PrefixConsistentHistory {
     type Vertex = (TransactionId, bool);
     fn get_root(&self) -> Self::Vertex {
-        ((0, 0), false)
+        (TransactionId(0, 0), false)
     }
 
     fn children_of(&self, u: &Self::Vertex) -> Option<Vec<Self::Vertex>> {
@@ -164,7 +164,7 @@ impl ConstrainedLinearization for PrefixConsistentHistory {
         let curr_txn = linearization.last().unwrap();
         let curr_txn_info = self.history.txns_info.get(&curr_txn.0).unwrap();
         if curr_txn.1 {
-            for &x in curr_txn_info.1.iter() {
+            for &x in curr_txn_info.write.iter() {
                 let read_by = self
                     .history
                     .wr_rel
@@ -176,7 +176,7 @@ impl ConstrainedLinearization for PrefixConsistentHistory {
                 self.active_write.insert(x, read_by.clone());
             }
         } else {
-            for (&x, _) in curr_txn_info.0.iter() {
+            for (&x, _) in curr_txn_info.read_from.iter() {
                 assert!(self
                     .active_write
                     .entry(x)
@@ -191,11 +191,11 @@ impl ConstrainedLinearization for PrefixConsistentHistory {
         let curr_txn = linearization.last().unwrap();
         let curr_txn_info = self.history.txns_info.get(&curr_txn.0).unwrap();
         if curr_txn.1 {
-            for &x in curr_txn_info.1.iter() {
+            for &x in curr_txn_info.write.iter() {
                 self.active_write.remove(&x);
             }
         } else {
-            for (&x, _) in curr_txn_info.0.iter() {
+            for (&x, _) in curr_txn_info.read_from.iter() {
                 self.active_write
                     .entry(x)
                     .or_insert_with(Default::default)
@@ -208,7 +208,7 @@ impl ConstrainedLinearization for PrefixConsistentHistory {
         if v.1 {
             let curr_txn_info = self.history.txns_info.get(&v.0).unwrap();
             curr_txn_info
-                .1
+                .write
                 .iter()
                 .all(|x| match self.active_write.get(x) {
                     Some(ts) if ts.len() == 1 => ts.iter().next().unwrap() == &v.0,
@@ -250,7 +250,7 @@ impl SnapshotIsolationHistory {
 impl ConstrainedLinearization for SnapshotIsolationHistory {
     type Vertex = (TransactionId, bool);
     fn get_root(&self) -> Self::Vertex {
-        ((0, 0), false)
+        (TransactionId(0, 0), false)
     }
 
     fn children_of(&self, u: &Self::Vertex) -> Option<Vec<Self::Vertex>> {
@@ -269,7 +269,7 @@ impl ConstrainedLinearization for SnapshotIsolationHistory {
         let curr_txn = linearization.last().unwrap();
         let curr_txn_info = self.history.txns_info.get(&curr_txn.0).unwrap();
         if curr_txn.1 {
-            for &x in curr_txn_info.1.iter() {
+            for &x in curr_txn_info.write.iter() {
                 let read_by = self
                     .history
                     .wr_rel
@@ -283,11 +283,11 @@ impl ConstrainedLinearization for SnapshotIsolationHistory {
 
             self.active_variable = self
                 .active_variable
-                .difference(&curr_txn_info.1)
+                .difference(&curr_txn_info.write)
                 .cloned()
                 .collect();
         } else {
-            for (&x, _) in curr_txn_info.0.iter() {
+            for (&x, _) in curr_txn_info.read_from.iter() {
                 assert!(self
                     .active_write
                     .entry(x)
@@ -298,7 +298,7 @@ impl ConstrainedLinearization for SnapshotIsolationHistory {
 
             self.active_variable = self
                 .active_variable
-                .union(&curr_txn_info.1)
+                .union(&curr_txn_info.write)
                 .cloned()
                 .collect();
         }
@@ -308,16 +308,16 @@ impl ConstrainedLinearization for SnapshotIsolationHistory {
         let curr_txn = linearization.last().unwrap();
         let curr_txn_info = self.history.txns_info.get(&curr_txn.0).unwrap();
         if curr_txn.1 {
-            for &x in curr_txn_info.1.iter() {
+            for &x in curr_txn_info.write.iter() {
                 self.active_write.remove(&x);
             }
             self.active_variable = self
                 .active_variable
-                .union(&curr_txn_info.1)
+                .union(&curr_txn_info.write)
                 .cloned()
                 .collect();
         } else {
-            for (&x, _) in curr_txn_info.0.iter() {
+            for (&x, _) in curr_txn_info.read_from.iter() {
                 self.active_write
                     .entry(x)
                     .or_insert_with(Default::default)
@@ -325,7 +325,7 @@ impl ConstrainedLinearization for SnapshotIsolationHistory {
             }
             self.active_variable = self
                 .active_variable
-                .difference(&curr_txn_info.1)
+                .difference(&curr_txn_info.write)
                 .cloned()
                 .collect();
         }
@@ -335,7 +335,7 @@ impl ConstrainedLinearization for SnapshotIsolationHistory {
         if v.1 {
             let curr_txn_info = self.history.txns_info.get(&v.0).unwrap();
             curr_txn_info
-                .1
+                .write
                 .iter()
                 .all(|x| match self.active_write.get(x) {
                     Some(ts) if ts.len() == 1 => ts.iter().next().unwrap() == &v.0,
@@ -344,7 +344,7 @@ impl ConstrainedLinearization for SnapshotIsolationHistory {
                 })
         } else {
             self.active_variable
-                .intersection(&self.history.txns_info.get(&v.0).unwrap().1)
+                .intersection(&self.history.txns_info.get(&v.0).unwrap().write)
                 .next()
                 .is_none()
         }
@@ -378,20 +378,20 @@ impl SerializableHistory {
 impl ConstrainedLinearization for SerializableHistory {
     type Vertex = TransactionId;
     fn get_root(&self) -> Self::Vertex {
-        (0, 0)
+        TransactionId(0, 0)
     }
 
     fn forward_book_keeping(&mut self, linearization: &[Self::Vertex]) {
         let curr_txn = linearization.last().unwrap();
         let curr_txn_info = self.history.txns_info.get(curr_txn).unwrap();
-        for (&x, _) in curr_txn_info.0.iter() {
+        for (&x, _) in curr_txn_info.read_from.iter() {
             assert!(self
                 .active_write
                 .entry(x)
                 .or_insert_with(Default::default)
                 .remove(curr_txn));
         }
-        for &x in curr_txn_info.1.iter() {
+        for &x in curr_txn_info.write.iter() {
             let read_by = self
                 .history
                 .wr_rel
@@ -408,10 +408,10 @@ impl ConstrainedLinearization for SerializableHistory {
     fn backtrack_book_keeping(&mut self, linearization: &[Self::Vertex]) {
         let curr_txn = linearization.last().unwrap();
         let curr_txn_info = self.history.txns_info.get(curr_txn).unwrap();
-        for &x in curr_txn_info.1.iter() {
+        for &x in curr_txn_info.write.iter() {
             self.active_write.remove(&x);
         }
-        for (&x, _) in curr_txn_info.0.iter() {
+        for (&x, _) in curr_txn_info.read_from.iter() {
             self.active_write
                 .entry(x)
                 .or_insert_with(Default::default)
@@ -430,7 +430,7 @@ impl ConstrainedLinearization for SerializableHistory {
     fn allow_next(&self, _linearization: &[Self::Vertex], v: &Self::Vertex) -> bool {
         let curr_txn_info = self.history.txns_info.get(v).unwrap();
         curr_txn_info
-            .1
+            .write
             .iter()
             .all(|x| match self.active_write.get(x) {
                 Some(ts) if ts.len() == 1 => ts.iter().next().unwrap() == v,

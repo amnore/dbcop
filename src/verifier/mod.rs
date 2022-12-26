@@ -1,6 +1,7 @@
 mod consistency;
 
 use std::cell::RefCell;
+use std::cmp::{min, max};
 use std::collections::{HashMap, HashSet};
 // use std::fs;
 use std::fs::File;
@@ -24,6 +25,17 @@ pub struct Verifier {
     use_sat: bool,
     use_bicomponent: bool,
     dir: PathBuf,
+}
+
+#[derive(Eq, Hash, PartialEq, Debug, Clone, Copy, Default, PartialOrd, Ord)]
+pub struct TransactionId(pub usize, pub usize);
+
+#[derive(Default, Debug, Clone)]
+pub struct TransactionInfo {
+    pub read_from: HashMap<usize, TransactionId>,
+    pub write: HashSet<usize>,
+    pub start_time: u128,
+    pub end_time: u128,
 }
 
 impl Verifier {
@@ -284,8 +296,13 @@ impl Verifier {
             for (i_transaction, transaction) in session.iter().enumerate() {
                 let mut read_info = HashMap::new();
                 let mut write_info = HashSet::new();
+                let mut start_time = u128::max_value();
+                let mut end_time = u128::min_value();
                 if transaction.success {
                     for event in transaction.events.iter() {
+                        start_time = min(start_time, event.start_time);
+                        end_time = max(end_time, event.end_time);
+
                         if event.success {
                             if event.write {
                                 write_info.insert(event.variable);
@@ -300,8 +317,8 @@ impl Verifier {
                                     root_write_info.insert(event.variable);
                                 }
                                 if wr_i_node != i_node + 1 || wr_i_transaction != i_transaction {
-                                    if let Some((old_i_node, old_i_transaction)) = read_info
-                                        .insert(event.variable, (wr_i_node, wr_i_transaction))
+                                    if let Some(TransactionId(old_i_node, old_i_transaction)) = read_info
+                                        .insert(event.variable, TransactionId(wr_i_node, wr_i_transaction))
                                     {
                                         // should be same, because repeatable read
                                         assert_eq!(old_i_node, wr_i_node);
@@ -313,14 +330,18 @@ impl Verifier {
                     }
                 }
                 if !read_info.is_empty() || !write_info.is_empty() {
-                    transaction_infos.insert((i_node + 1, i_transaction), (read_info, write_info));
+                    transaction_infos.insert(TransactionId(i_node + 1, i_transaction), TransactionInfo {
+                        read_from: read_info,
+                        write: write_info,
+                        start_time, end_time,
+                    });
                 }
             }
         }
 
         if !root_write_info.is_empty() {
             assert!(transaction_infos
-                .insert((0, 0), (Default::default(), root_write_info))
+                .insert(TransactionId(0, 0), TransactionInfo { write: root_write_info, ..Default::default() })
                 .is_none());
         }
 
@@ -393,18 +414,17 @@ impl Verifier {
     fn restrict(
         &self,
         transaction_infos: &HashMap<
-            (usize, usize),
-            (HashMap<usize, (usize, usize)>, HashSet<usize>),
+                TransactionId, TransactionInfo
         >,
         component: &HashSet<usize>,
-    ) -> HashMap<(usize, usize), (HashMap<usize, (usize, usize)>, HashSet<usize>)> {
+    ) -> HashMap<TransactionId, TransactionInfo> {
         let mut new_info = transaction_infos.clone();
 
         new_info.retain(|k, _| component.contains(&k.0));
 
         new_info
             .values_mut()
-            .for_each(|(read_info, _)| read_info.retain(|_, k| component.contains(&k.0)));
+            .for_each(|info| info.read_from.retain(|_, k| component.contains(&k.0)));
 
         new_info
     }
@@ -413,8 +433,7 @@ impl Verifier {
         &mut self,
         histories: &[Session],
         transaction_infos: &HashMap<
-            (usize, usize),
-            (HashMap<usize, (usize, usize)>, HashSet<usize>),
+                TransactionId, TransactionInfo
         >,
     ) -> Option<Consistency> {
         if self.use_sat {
