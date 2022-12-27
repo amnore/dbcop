@@ -10,6 +10,7 @@ use std::path::PathBuf;
 // use consistency::sat::Sat;
 use consistency::Consistency;
 use crate::db::history::{Session, Event};
+use crate::verifier::consistency::algo::LinearizableHistory;
 
 use consistency::algo::{
     AtomicHistoryPO, PrefixConsistentHistory, SerializableHistory, SnapshotIsolationHistory,
@@ -585,33 +586,6 @@ impl Verifier {
                     if ser_hist.history.vis.has_cycle() {
                         Some(self.consistency_model)
                     } else {
-                        // let lin_o = ser_hist.get_linearization();
-                        // {
-                        //     // checking correctness
-                        //     if let Some(ref lin) = lin_o {
-                        //         let mut curr_value_map: HashMap<usize, (usize, usize)> =
-                        //             Default::default();
-                        //         for txn_id in lin.iter() {
-                        //             let (read_info, write_info) =
-                        //                 transaction_infos.get(txn_id).unwrap();
-                        //             for (x, txn1) in read_info.iter() {
-                        //                 match curr_value_map.get(&x) {
-                        //                     Some(txn1_) => assert_eq!(txn1_, txn1),
-                        //                     _ => unreachable!(),
-                        //                 }
-                        //             }
-                        //             for &x in write_info.iter() {
-                        //                 curr_value_map.insert(x, *txn_id);
-                        //             }
-                        //             // if !write_info.is_empty() {
-                        //             //     println!("{:?}", txn_id);
-                        //             //     println!("{:?}", curr_value_map);
-                        //             // }
-                        //         }
-                        //     }
-                        // }
-                        // lin_o.is_some();
-
                         now = std::time::Instant::now();
                         if ser_hist.get_linearization().is_some() {
                             // println!("dbcop main algorithm took {}secs", now.elapsed().as_secs());
@@ -622,10 +596,44 @@ impl Verifier {
                     }
                 }
                 Consistency::Linearizable => {
-                    if self.verify_history_linearizable(histories) {
-                        None
+                    let mut ser_hist =
+                        LinearizableHistory::new(transaction_infos.clone());
+
+                    let wr = ser_hist.history.history.get_wr();
+                    ser_hist.history.history.vis_includes(&wr);
+                    let mut change = false;
+                    // wsc code
+                    let mut now = std::time::Instant::now();
+                    // println!("wsc start");
+                    loop {
+                        change |= ser_hist.history.history.vis_is_trans();
+                        if !change {
+                            break;
+                        } else {
+                            change = false;
+                        }
+                        let ww = ser_hist.history.history.causal_ww();
+                        for (_, ww_x) in ww.iter() {
+                            change |= ser_hist.history.history.vis_includes(ww_x);
+                        }
+                        let rw = ser_hist.history.history.causal_rw();
+                        for (_, rw_x) in rw.iter() {
+                            change |= ser_hist.history.history.vis_includes(rw_x);
+                        }
+                    }
+                    // println!("wsc end");
+                    // println!("wsc took {}secs", now.elapsed().as_secs());
+
+                    if ser_hist.history.history.vis.has_cycle() {
+                        Some(self.consistency_model)
                     } else {
-                        Some(Consistency::Linearizable)
+                        now = std::time::Instant::now();
+                        if ser_hist.get_linearization().is_some() {
+                            // println!("dbcop main algorithm took {}secs", now.elapsed().as_secs());
+                            None
+                        } else {
+                            Some(self.consistency_model)
+                        }
                     }
                 }
                 Consistency::Inc => {

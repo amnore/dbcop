@@ -443,3 +443,46 @@ impl ConstrainedLinearization for SerializableHistory {
         self.history.txns_info.keys().cloned().collect()
     }
 }
+
+#[derive(Debug)]
+pub struct LinearizableHistory {
+    pub history: SerializableHistory,
+}
+
+impl LinearizableHistory {
+    pub fn new(txns_info: HashMap<TransactionId, TransactionInfo>) -> Self {
+        Self {
+            history: SerializableHistory::new(txns_info),
+        }
+    }
+}
+
+impl ConstrainedLinearization for LinearizableHistory {
+    type Vertex = TransactionId;
+    fn get_root(&self) -> Self::Vertex {
+        self.history.get_root()
+    }
+
+    fn forward_book_keeping(&mut self, linearization: &[Self::Vertex]) {
+        self.history.forward_book_keeping(linearization)
+    }
+
+    fn backtrack_book_keeping(&mut self, linearization: &[Self::Vertex]) {
+        self.history.backtrack_book_keeping(linearization)
+    }
+
+    fn children_of(&self, u: &Self::Vertex) -> Option<Vec<Self::Vertex>> {
+        self.history.children_of(u)
+    }
+
+    fn allow_next(&self, _linearization: &[Self::Vertex], v: &Self::Vertex) -> bool {
+        let new_txn_end_time = self.history.history.txns_info.get(v).unwrap().end_time;
+        let old_txn_start_time = self.history.history.txns_info.get(_linearization.last().unwrap()).unwrap().start_time;
+
+        old_txn_start_time < new_txn_end_time && self.history.allow_next(_linearization, v)
+    }
+
+    fn vertices(&self) -> Vec<Self::Vertex> {
+        self.history.vertices()
+    }
+}

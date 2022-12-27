@@ -38,7 +38,7 @@ pub struct HistoryParams<'a> {
     pub longtxn_proportion: f64,
     pub longtxn_size: f64,
     pub key_distribution: &'a dyn MyDistributionTrait,
-    pub rmw_only: bool,
+    pub rmw_proportion: f64,
 }
 
 impl fmt::Debug for Event {
@@ -177,6 +177,7 @@ pub fn generate_single_history(
     let mut random_generator = rand::thread_rng();
     let read_distribution = Bernoulli::new(params.read_probability).unwrap();
     let longtxn_distribution = Bernoulli::new(params.longtxn_proportion).unwrap();
+    let rmw_distribution = Bernoulli::new(params.rmw_proportion).unwrap();
     // let _jump = (params.n_variable as f64 / params.n_node as f64).ceil() as usize;
     (0..params.n_node).map(|_| {
         // let i = i_node * jump;
@@ -204,7 +205,7 @@ pub fn generate_single_history(
             let generate_event = |n| {
                 let variable = params.key_distribution.sample(&mut random_generator);
 
-                if params.rmw_only {
+                if rmw_distribution.sample(&mut random_generator) {
                     if n % 2 == 0 {
                         previous_variable = Some(variable);
                         generate_read_event(variable)
