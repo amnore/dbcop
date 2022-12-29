@@ -189,32 +189,30 @@ pub fn generate_single_history(
             } else {
                 params.n_event
             };
-
-            let generate_read_event = |v| {
-                Event::read(v)
-            };
-            let mut generate_write_event = |v| {
-                let value = {
-                    let entry = counters.entry(v).or_insert(0);
-                    *entry += 1;
-                    *entry
-                };
-                Event::write(v, value)
-            };
+            let is_rmw_txn = rmw_distribution.sample(&mut random_generator);
             let mut previous_variable: Option<usize> = None;
+
             let generate_event = |n| {
                 let variable = params.key_distribution.sample(&mut random_generator);
+                let mut generate_write_event = |v| {
+                    let value = {
+                        let entry = counters.entry(v).or_insert(0);
+                        *entry += 1;
+                        *entry
+                    };
+                    Event::write(v, value)
+                };
 
-                if rmw_distribution.sample(&mut random_generator) {
+                if is_rmw_txn {
                     if n % 2 == 0 {
                         previous_variable = Some(variable);
-                        generate_read_event(variable)
+                        Event::read(variable)
                     } else {
                         generate_write_event(previous_variable.unwrap())
                     }
                 } else {
                     if read_distribution.sample(&mut random_generator) {
-                        generate_read_event(variable)
+                        Event::read(variable)
                     } else {
                         generate_write_event(variable)
                     }
