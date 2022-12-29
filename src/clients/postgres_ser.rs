@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::thread::spawn;
 use std::io::Write;
+use std::time::Instant;
 
 use crate::db::cluster::{Cluster, ClusterNode, Node};
 use crate::db::history::{HistParams, Transaction};
@@ -18,14 +19,16 @@ pub struct PostgresNode {
     addr: String,
     id: usize,
     progress: Arc<MultiProgress>,
+    start_time: Instant,
 }
 
 impl PostgresNode {
-    fn new(node: Node, cluster: &PostgresCluster) -> Self {
+    fn new(node: Node, cluster: &PostgresCluster, start_time: Instant) -> Self {
         PostgresNode {
             addr: format!("postgresql://{}:{}@{}", "postgres", "postgres", node.addr),
             id: node.id,
             progress: cluster.1.clone(),
+            start_time,
         }
     }
 }
@@ -59,6 +62,8 @@ impl ClusterNode for PostgresNode {
                     };
 
                 for event in transaction.events.iter_mut() {
+                    event.start_time = self.start_time.elapsed().as_nanos();
+
                     if event.write {
                         match sqltxn.execute(
                             "UPDATE dbcop.variables SET val=$1 WHERE var=$2",
@@ -90,6 +95,8 @@ impl ClusterNode for PostgresNode {
                             }
                         }
                     }
+
+                    event.end_time = self.start_time.elapsed().as_nanos();
                 }
 
                 transaction.success &= match sqltxn.commit() {
@@ -105,11 +112,11 @@ impl ClusterNode for PostgresNode {
 }
 
 #[derive(Debug)]
-pub struct PostgresCluster(Vec<Node>, Arc<MultiProgress>);
+pub struct PostgresCluster(Vec<Node>, Arc<MultiProgress>, Instant);
 
 impl PostgresCluster {
     pub fn new(ips: &Vec<&str>) -> Self {
-        PostgresCluster(PostgresCluster::node_vec(ips), Arc::new(MultiProgress::new()))
+        PostgresCluster(PostgresCluster::node_vec(ips), Arc::new(MultiProgress::new()), Instant::now())
     }
 
     fn create_table(&self) -> bool {
@@ -180,7 +187,7 @@ impl Cluster<PostgresNode> for PostgresCluster {
         self.0[id].clone()
     }
     fn get_cluster_node(&self, id: usize) -> PostgresNode {
-        PostgresNode::new(self.get_node(id), self)
+        PostgresNode::new(self.get_node(id), self, self.2)
     }
     fn setup_test(&mut self, p: &HistParams) {
         self.create_variables(p.get_n_variable());
