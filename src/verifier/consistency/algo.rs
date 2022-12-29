@@ -476,10 +476,15 @@ impl ConstrainedLinearization for LinearizableHistory {
     }
 
     fn allow_next(&self, _linearization: &[Self::Vertex], v: &Self::Vertex) -> bool {
-        let new_txn_end_time = self.history.history.txns_info.get(v).unwrap().end_time;
-        let old_txn_start_time = self.history.history.txns_info.get(_linearization.last().unwrap()).unwrap().start_time;
+        let time_correct = _linearization.last().map_or(true, |tail| {
+            let txns_info = &self.history.history.txns_info;
+            let new_txn_end_time = txns_info.get(v).unwrap().end_time;
+            let old_txn_start_time = txns_info.get(tail).unwrap().start_time;
 
-        old_txn_start_time < new_txn_end_time && self.history.allow_next(_linearization, v)
+            old_txn_start_time < new_txn_end_time
+        });
+
+        time_correct && self.history.allow_next(_linearization, v)
     }
 
     fn vertices(&self) -> Vec<Self::Vertex> {
