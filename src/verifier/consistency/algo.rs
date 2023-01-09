@@ -447,11 +447,19 @@ impl ConstrainedLinearization for SerializableHistory {
 #[derive(Debug)]
 pub struct LinearizableHistory {
     pub history: SerializableHistory,
+    rmw_by: HashMap<TransactionId, Vec<TransactionId>>,
+    rmw_count: HashMap<TransactionId, i32>,
 }
 
 impl LinearizableHistory {
     pub fn new(txns_info: HashMap<TransactionId, TransactionInfo>) -> Self {
         Self {
+            rmw_count: txns_info.iter().map(|(id, info)| (*id, info.rmw_keys.len() as i32)).collect(),
+            rmw_by: txns_info.iter().flat_map(|(id, info)| info.rmw_keys.iter().map(|k| (info.read_from[k], *id)))
+                                    .fold(HashMap::new(), |mut m, e| {
+                                        m.entry(e.0).or_insert(Vec::new()).push(e.1);
+                                        m
+                                    }),
             history: SerializableHistory::new(txns_info),
         }
     }
@@ -464,11 +472,19 @@ impl ConstrainedLinearization for LinearizableHistory {
     }
 
     fn forward_book_keeping(&mut self, linearization: &[Self::Vertex]) {
-        self.history.forward_book_keeping(linearization)
+        self.history.forward_book_keeping(linearization);
+
+        if let Some(ids) = self.rmw_by.get(linearization.last().unwrap()) {
+            ids.iter().for_each(|id| *self.rmw_count.get_mut(id).unwrap() -= 1);
+        }
     }
 
     fn backtrack_book_keeping(&mut self, linearization: &[Self::Vertex]) {
-        self.history.backtrack_book_keeping(linearization)
+        self.history.backtrack_book_keeping(linearization);
+
+        if let Some(ids) = self.rmw_by.get(linearization.last().unwrap()) {
+            ids.iter().for_each(|id| *self.rmw_count.get_mut(id).unwrap() += 1);
+        }
     }
 
     fn children_of(&self, u: &Self::Vertex) -> Option<Vec<Self::Vertex>> {
@@ -476,15 +492,15 @@ impl ConstrainedLinearization for LinearizableHistory {
     }
 
     fn allow_next(&self, _linearization: &[Self::Vertex], v: &Self::Vertex) -> bool {
-        let time_correct = _linearization.last().map_or(true, |tail| {
-            let txns_info = &self.history.history.txns_info;
-            let new_txn_end_time = txns_info.get(v).unwrap().end_time;
-            let old_txn_start_time = txns_info.get(tail).unwrap().start_time;
+        // let time_correct = _linearization.last().map_or(true, |tail| {
+        //     let txns_info = &self.history.history.txns_info;
+        //     let new_txn_end_time = txns_info.get(v).unwrap().end_time;
+        //     let old_txn_start_time = txns_info.get(tail).unwrap().start_time;
 
-            old_txn_start_time < new_txn_end_time
-        });
+        //     old_txn_start_time < new_txn_end_time
+        // });
 
-        time_correct && self.history.allow_next(_linearization, v)
+        self.rmw_count.get(v).map_or(true, |c| *c == 0) && self.history.allow_next(_linearization, v)
     }
 
     fn vertices(&self) -> Vec<Self::Vertex> {

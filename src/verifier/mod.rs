@@ -37,6 +37,7 @@ pub struct TransactionInfo {
     pub write: HashSet<usize>,
     pub start_time: u128,
     pub end_time: u128,
+    pub rmw_keys: HashSet<usize>,
 }
 
 impl Verifier {
@@ -115,36 +116,6 @@ impl Verifier {
         );
 
         decision
-    }
-
-    fn verify_history_linearizable(&self, histories: &[Session]) -> bool {
-        let mut operations = histories.iter().flatten().flat_map(|t| {
-            let mut rmw_ops = Vec::new();
-            let mut read_op: RefCell<Option<&Event>> = RefCell::new(None);
-
-            for ev in &t.events {
-                if ev.write {
-                    let read_ev = read_op.take().unwrap();
-                    assert_eq!(read_ev.variable, ev.variable);
-                    assert!(read_ev.success && ev.success);
-
-                    rmw_ops.push(Event {
-                        write: true,
-                        variable: ev.variable,
-                        value: ev.value,
-                        success: true,
-                        start_time: read_ev.start_time,
-                        end_time: ev.end_time,
-                    });
-                } else {
-                    read_op.replace(Some(ev));
-                }
-            }
-
-            rmw_ops.into_iter()
-        }).collect::<Vec<_>>();
-        operations.sort_by_key(|e| e.start_time);
-        self.time_valid(&operations, 0, operations.len())
     }
 
     fn time_valid(&self, events: &Vec<Event>, i: usize, j: usize) -> bool {
@@ -297,6 +268,7 @@ impl Verifier {
             for (i_transaction, transaction) in session.iter().enumerate() {
                 let mut read_info = HashMap::new();
                 let mut write_info = HashSet::new();
+                let mut rmw_info = HashSet::new();
                 let mut start_time = u128::max_value();
                 let mut end_time = u128::min_value();
                 if transaction.success {
@@ -306,6 +278,9 @@ impl Verifier {
 
                         if event.success {
                             if event.write {
+                                if read_info.contains_key(&event.variable) {
+                                    rmw_info.insert(event.variable);
+                                }
                                 write_info.insert(event.variable);
                                 // all variable is initialized at root transaction
                                 root_write_info.insert(event.variable);
@@ -334,7 +309,9 @@ impl Verifier {
                     transaction_infos.insert(TransactionId(i_node + 1, i_transaction), TransactionInfo {
                         read_from: read_info,
                         write: write_info,
-                        start_time, end_time,
+                        rmw_keys: rmw_info,
+                        start_time,
+                        end_time,
                     });
                 }
             }
