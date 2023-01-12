@@ -204,23 +204,26 @@ pub fn generate_single_history(
                 };
 
                 if is_rmw_txn {
-                    if n % 2 == 0 {
-                        previous_variable = Some(variable);
-                        Event::read(variable)
-                    } else {
-                        generate_write_event(previous_variable.unwrap())
+                    match n {
+                        0 => {
+                            previous_variable = Some(variable);
+                            Some(Event::read(variable))
+                        }
+                        1 => Some(generate_write_event(previous_variable.unwrap())),
+                        _ => None
                     }
                 } else {
                     if read_distribution.sample(&mut random_generator) {
-                        Event::read(variable)
+                        Some(Event::read(variable))
                     } else {
-                        generate_write_event(variable)
+                        Some(generate_write_event(variable))
+
                     }
                 }
             };
 
             Transaction {
-                events: (0..size).map(generate_event).collect(),
+                events: (0..size).filter_map(generate_event).collect(),
                 success: false,
             }
         }).collect()
